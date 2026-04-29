@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hr_hub_postgres
+    environment:
+      POSTGRES_USER: hr_admin
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: hr_digital_hub
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hr_admin -d hr_digital_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hr_hub_network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hr_hub_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql://hr_admin:secure_password@postgres:5432/hr_digital_hub"
+      DEBUG: "True"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    stdin_open: true
+    tty: true
+    networks:
+      - hr_hub_network
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hr_hub_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@hr-hub.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - hr_hub_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  hr_hub_network:
+    driver: bridge
