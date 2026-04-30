@@ -101,7 +101,25 @@ def assign_to_position(
     try:
         return EmployeeService.assign_to_position(
             db,
-            assignment.employee_id,
+            employee_id,
+            assignment.position_id,
+            assignment.start_date
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{employee_id}/reassign-position", response_model=EmployeePositionResponse)
+def reassign_to_position(
+    employee_id: UUID,
+    assignment: EmployeePositionCreate,
+    db: Session = Depends(get_db)
+):
+    """Reassign an employee to a new position."""
+    try:
+        return EmployeeService.assign_to_position(
+            db,
+            employee_id,
             assignment.position_id,
             assignment.start_date
         )

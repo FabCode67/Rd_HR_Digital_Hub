@@ -82,16 +82,27 @@ class EmployeeService:
         if not position:
             raise ValueError(f"Position {position_id} not found")
 
-        # End any current assignments to this position
-        current_assignment = db.query(EmployeePosition).filter(
+        # End any current assignment for this employee
+        current_employee_assignment = db.query(EmployeePosition).filter(
+            EmployeePosition.employee_id == employee_id,
+            EmployeePosition.is_current == True
+        ).first()
+
+        if current_employee_assignment:
+            current_employee_assignment.is_current = False
+            current_employee_assignment.end_date = datetime.utcnow()
+            db.add(current_employee_assignment)
+
+        # End any current assignment to the target position
+        current_position_assignment = db.query(EmployeePosition).filter(
             EmployeePosition.position_id == position_id,
             EmployeePosition.is_current == True
         ).first()
 
-        if current_assignment:
-            current_assignment.is_current = False
-            current_assignment.end_date = datetime.utcnow()
-            db.add(current_assignment)
+        if current_position_assignment:
+            current_position_assignment.is_current = False
+            current_position_assignment.end_date = datetime.utcnow()
+            db.add(current_position_assignment)
 
         # Create new assignment
         assignment = EmployeePosition(
@@ -105,6 +116,10 @@ class EmployeeService:
         db.refresh(assignment)
 
         # Update position vacancy status
+        if current_employee_assignment:
+            PositionService.update_vacancy_status(db, current_employee_assignment.position_id)
+        if current_position_assignment:
+            PositionService.update_vacancy_status(db, current_position_assignment.position_id)
         PositionService.update_vacancy_status(db, position_id)
 
         return assignment
