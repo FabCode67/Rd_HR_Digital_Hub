@@ -1,5 +1,8 @@
 # dependencies
 /node_modules
+/client/node_modules
+/client/.next
+
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,13 +13,20 @@
 
 # testing
 /coverage
+cypress/videos
+cypress/screenshots
+client/coverage
+client/cypress/videos
 
 # next.js
 /.next/
 /out/
+client/.next/
+client/out/
 
 # production
 /build
+client/build
 
 # misc
 .DS_Store
@@ -30,7 +40,10 @@ pnpm-debug.log*
 
 # env files
 .env*.local
+client/.env*.local
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/client/next-env.d.ts
+
