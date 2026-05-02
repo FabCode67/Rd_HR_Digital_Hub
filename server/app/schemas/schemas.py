@@ -91,6 +91,24 @@ class PositionTreeNode(PositionResponse):
     employee: Optional['EmployeeSimple'] = None
 
 
+class DepartmentHierarchyNode(BaseModel):
+    """Schema for hierarchical Department tree node with nested positions."""
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    # Hierarchical data
+    children: List['DepartmentHierarchyNode'] = []
+    positions: List[PositionTreeNode] = []
+
+    class Config:
+        from_attributes = True
+
+
 # ============================================================================
 # EMPLOYEE SCHEMAS
 # ============================================================================

@@ -5,6 +5,7 @@ from app.schemas.schemas import (
     DepartmentCreate,
     DepartmentUpdate,
     DepartmentResponse,
+    DepartmentHierarchyNode,
     # Position
     PositionBase,
     PositionCreate,

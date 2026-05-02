@@ -70,6 +70,14 @@ export interface PositionTreeNode extends Position {
 }
 
 /**
+ * Department tree node with hierarchical structure and nested positions
+ */
+export interface DepartmentHierarchyNode extends Department {
+  children: DepartmentHierarchyNode[];
+  positions: PositionTreeNode[];
+}
+
+/**
  * Department in organizational hierarchy
  */
 export interface Department {

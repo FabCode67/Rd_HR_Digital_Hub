@@ -13,7 +13,7 @@ export default function OrgPage() {
         <p className="text-sm text-slate-500 dark:text-slate-400">Structure</p>
       </div>
 
-      <DepartmentTree parentDepartmentId="e671f9d5-7a86-4abd-84ed-b09650640d7b" />
+      <DepartmentTree />
     </section>
   );
 }

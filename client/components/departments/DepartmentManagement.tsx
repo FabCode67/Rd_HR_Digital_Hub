@@ -140,7 +140,7 @@ export default function DepartmentManagement() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <form onSubmit={submitForm} className="space-y-3">
@@ -287,18 +287,35 @@ export default function DepartmentManagement() {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div
+          className={cn(
+            "space-y-4 rounded-lg border border-slate-200 bg-white p-4 transition-all duration-200 dark:border-slate-800 dark:bg-slate-900",
+            treeOpen ? "lg:w-[420px]" : "lg:w-14 lg:px-2 lg:py-4"
+          )}
+        >
           <button
             type="button"
             onClick={() => setTreeOpen((value) => !value)}
-            className="flex w-full items-center justify-between text-left text-sm font-medium"
+            aria-expanded={treeOpen}
+            aria-controls="department-hierarchy-panel"
+            className={cn(
+              "flex w-full items-center justify-between rounded-md text-left text-sm font-medium transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60",
+              treeOpen ? "px-1 py-1" : "h-full min-h-[180px] flex-col justify-center gap-3 px-0 py-2"
+            )}
           >
-            <span>Hierarchy</span>
+            <span className={cn("flex items-center gap-2", !treeOpen && "flex-col gap-2") }>
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {treeOpen ? "−" : "+"}
+              </span>
+              <span style={!treeOpen ? { writingMode: "vertical-rl", transform: "rotate(180deg)" } : undefined}>
+                Hierarchy
+              </span>
+            </span>
             {treeOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
 
           {treeOpen && (
-            <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <div id="department-hierarchy-panel" className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
               {rootDepartments.length > 0 ? (
                 rootDepartments.map((department) => (
                   <DepartmentNode key={department.id} department={department} level={0} />

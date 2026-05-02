@@ -6,6 +6,7 @@
 import {
   Department,
   DepartmentCreateInput,
+  DepartmentHierarchyNode,
   DepartmentUpdateInput,
   Employee,
   EmployeeCreateInput,
@@ -168,12 +169,12 @@ export const positionAPI = {
    */
   async getOrganizationTree(
     departmentId?: string
-  ): Promise<PositionTreeNode[]> {
+  ): Promise<DepartmentHierarchyNode[]> {
     const params = new URLSearchParams();
     if (departmentId) {
       params.append("department_id", departmentId);
     }
-    return fetchAPI<PositionTreeNode[]>(
+    return fetchAPI<DepartmentHierarchyNode[]>(
       `${ENDPOINTS.POSITION_TREE}?${params}`
     );
   },

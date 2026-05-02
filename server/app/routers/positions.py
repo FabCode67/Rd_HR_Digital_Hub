@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Position
-from app.schemas import PositionCreate, PositionUpdate, PositionResponse, PositionTreeNode
+from app.schemas import PositionCreate, PositionUpdate, PositionResponse, PositionTreeNode, DepartmentHierarchyNode
 from app.services import PositionService, DepartmentService
 
 router = APIRouter(prefix="/positions", tags=["positions"])
@@ -56,18 +56,31 @@ def list_positions(
     return PositionService.get_all(db, department_id=department_id, skip=skip, limit=limit)
 
 
-@router.get("/tree/hierarchy", response_model=List[PositionTreeNode])
+@router.get("/tree/hierarchy", response_model=List[DepartmentHierarchyNode])
 def get_organization_tree(
     department_id: UUID = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Get organization hierarchy tree of positions."""
+    """
+    Get optimized organization hierarchy tree with departments and positions.
+    
+    Returns a hierarchical structure containing:
+    - Departments with their child departments
+    - Positions within each department (hierarchically organized)
+    - Employee assignments for each position
+    
+    Query Parameters:
+        department_id: Optional parent department ID to get subtree
+        
+    Returns:
+        List of DepartmentHierarchyNode with full tree structure
+    """
     if department_id:
         dept = DepartmentService.get_by_id(db, department_id)
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
     
-    return PositionService.get_organization_tree(db, department_id=department_id)
+    return PositionService.get_department_hierarchy_tree(db, department_id=department_id)
 
 
 @router.put("/{position_id}", response_model=PositionResponse)

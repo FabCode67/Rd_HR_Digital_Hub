@@ -4,45 +4,27 @@ import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { Department } from "@/lib/types";
 import { Loader2 } from "lucide-react";
-import PositionTree from "./PositionTree";
+import DepartmentNode from "./DepartmentNode";
 
 interface DepartmentTreeProps {
   rootDepartments?: Department[];
-  parentDepartmentId?: string;
 }
 
-export default function DepartmentTree({ rootDepartments, parentDepartmentId }: DepartmentTreeProps) {
+export default function DepartmentTree({ rootDepartments }: DepartmentTreeProps) {
   const [roots, setRoots] = useState<Department[] | null>(null);
-  const [positions, setPositions] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    async function loadHierarchy() {
-      setLoading(true);
-      setError(null);
-      try {
-        // Get the positions tree hierarchy for the department
-        const positionsTree = await apiClient.position.getOrganizationTree(parentDepartmentId!);
-        if (!mounted) return;
-        setPositions(positionsTree || []);
-      } catch (err) {
-        if (!mounted) return;
-        console.error(err);
-        setError(err instanceof Error ? err.message : "Failed to load organization tree");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
 
     async function loadRoots() {
       setLoading(true);
       setError(null);
       try {
-        const data = await apiClient.department.getRootDepartments();
+        const data = rootDepartments || (await apiClient.department.getRootDepartments());
         if (!mounted) return;
-        setRoots(data);
+        setRoots(data || []);
       } catch (err) {
         if (!mounted) return;
         console.error(err);
@@ -52,24 +34,18 @@ export default function DepartmentTree({ rootDepartments, parentDepartmentId }: 
       }
     }
 
-    if (parentDepartmentId) {
-      loadHierarchy();
-    } else if (!rootDepartments) {
-      loadRoots();
-    } else {
-      setRoots(rootDepartments);
-    }
+    loadRoots();
 
     return () => {
       mounted = false;
     };
-  }, [rootDepartments, parentDepartmentId]);
+  }, [rootDepartments]);
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold text-foreground">Organization Structure</h2>
-        <p className="text-sm text-muted-foreground mt-1">View the hierarchical structure of all positions in the department</p>
+        <p className="text-sm text-muted-foreground mt-1">View the hierarchical structure of all departments and positions</p>
       </div>
 
       <div className="bg-card border rounded-lg">
@@ -85,29 +61,38 @@ export default function DepartmentTree({ rootDepartments, parentDepartmentId }: 
           {/* Error State */}
           {error && (
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-              <p className="text-sm text-destructive font-medium">Error loading positions</p>
+              <p className="text-sm text-destructive font-medium">Error loading organization structure</p>
               <p className="text-xs text-destructive/70 mt-1">{error}</p>
             </div>
           )}
 
           {/* Empty State */}
-          {!loading && !error && (!positions || positions.length === 0) && (
+          {!loading && !error && (!roots || roots.length === 0) && (
             <div className="text-center py-8">
-              <p className="text-sm text-muted-foreground">No positions found in this department.</p>
+              <p className="text-sm text-muted-foreground">No departments found.</p>
             </div>
           )}
 
-          {/* Positions Tree */}
-          {positions && positions.length > 0 && (
+          {/* Department Tree */}
+          {roots && roots.length > 0 && (
             <div className="space-y-3">
-              <PositionTree positions={positions} level={0} />
+              {roots.map((dept) => (
+                <DepartmentNode key={dept.id} department={dept} />
+              ))}
             </div>
           )}
         </div>
       </div>
 
       {/* Legend */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div className="flex items-start gap-2">
+          <div className="mt-1 text-lg flex-shrink-0">📁</div>
+          <div>
+            <p className="font-medium text-foreground">Department</p>
+            <p className="text-xs text-muted-foreground">Organizational unit</p>
+          </div>
+        </div>
         <div className="flex items-start gap-2">
           <div className="mt-1 w-3 h-3 rounded bg-blue-400 flex-shrink-0" />
           <div>

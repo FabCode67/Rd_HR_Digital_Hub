@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Department, PositionTreeNode } from "@/lib/types";
+import { Department, DepartmentHierarchyNode } from "@/lib/types";
 import { apiClient } from "@/lib/api";
 
 /**
@@ -86,7 +86,7 @@ export function useRootDepartments() {
  * Hook to fetch organizational tree
  */
 export function useOrganizationTree(departmentId?: string) {
-  const [tree, setTree] = useState<PositionTreeNode[]>([]);
+  const [tree, setTree] = useState<DepartmentHierarchyNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
