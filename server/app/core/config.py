@@ -1,8 +1,10 @@
 """
 Application configuration and settings.
 """
+import json
 import os
 from typing import Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,7 +27,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8000",
         "http://localhost:8080",
+        "https://rd-hr-digital-hub.vercel.app",
     ]
+    CORS_ALLOW_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list = ["*"]
     CORS_ALLOW_HEADERS: list = ["*"]
@@ -36,6 +40,30 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        """Accept JSON array or comma-separated values for CORS origins."""
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip().rstrip("/") for origin in parsed if str(origin).strip()]
+                except json.JSONDecodeError:
+                    pass
+
+            return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
+        if isinstance(value, list):
+            return [str(origin).strip().rstrip("/") for origin in value if str(origin).strip()]
+
+        return value
 
 
 settings = Settings()

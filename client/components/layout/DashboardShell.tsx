@@ -13,6 +13,7 @@ import {
   Users,
   BarChart3,
   Menu,
+  X,
   CircleUserRound,
   Settings,
   LogOut,
@@ -34,9 +35,35 @@ const navItems = [
 
 export default function DashboardShell({ children }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const pathname = usePathname();
   const sidebarWidthClass = collapsed ? "md:pl-16" : "md:pl-60";
+
+  const renderNav = (compact: boolean, onNavigate?: () => void) => (
+    <nav className="space-y-1 p-2">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = pathname === item.href;
+        return (
+          <Link
+            key={item.label}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              isActive
+                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            {!compact && <span className="truncate">{item.label}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
@@ -69,27 +96,42 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           </button>
         </div>
 
-        <nav className="space-y-1 p-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
+        {renderNav(collapsed)}
+      </aside>
+
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/40 transition-opacity md:hidden",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        )}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden={!mobileOpen}
+      />
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900/95 md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+        aria-hidden={!mobileOpen}
+      >
+        <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rwanda HR</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Close sidebar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {renderNav(false, () => setMobileOpen(false))}
       </aside>
 
       <div className={cn("flex min-h-screen flex-col", sidebarWidthClass)}>
@@ -98,7 +140,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCollapsed((value) => !value)}
+                onClick={() => setMobileOpen((value) => !value)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
                 aria-label="Toggle sidebar"
               >
