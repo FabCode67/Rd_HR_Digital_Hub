@@ -140,8 +140,8 @@ export default function DepartmentManagement() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="space-y-4">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] min-w-0">
+        <div className="space-y-4 min-w-0">
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <form onSubmit={submitForm} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -226,61 +226,114 @@ export default function DepartmentManagement() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading
               </div>
             ) : departments.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-                  <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-950/40 dark:text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Name</th>
-                      <th className="px-4 py-3 font-medium">Parent</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {departments.map((department) => (
-                      <tr key={department.id} className={cn(department.is_active ? "" : "opacity-60") }>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-900 dark:text-slate-100">{department.name}</div>
-                          {department.description && (
-                            <div className="text-xs text-slate-500 dark:text-slate-400">{department.description}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                          {departments.find((parent) => parent.id === department.parent_id)?.name ?? "Root"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={cn(
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+                  {departments.map((department) => (
+                    <div
+                      key={department.id}
+                      className={cn("p-4 space-y-2", department.is_active ? "" : "opacity-60")}
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{department.name}</p>
+                        {department.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{department.description}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={cn(
                             "rounded-full px-2 py-1 text-xs font-medium",
                             department.is_active
                               ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
                               : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                          )}>
-                            {department.is_active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(department)}
-                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                            >
-                              <Pencil className="h-3.5 w-3.5" /> Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteDepartment(department)}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> Delete
-                            </button>
-                          </div>
-                        </td>
+                          )}
+                        >
+                          {department.is_active ? "Active" : "Inactive"}
+                        </span>
+                        <span className="text-xs text-slate-600 dark:text-slate-400">
+                          Parent: {departments.find((parent) => parent.id === department.parent_id)?.name ?? "Root"}
+                        </span>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(department)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteDepartment(department)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                    <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-950/40 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Name</th>
+                        <th className="px-4 py-3 font-medium">Parent</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {departments.map((department) => (
+                        <tr key={department.id} className={cn(department.is_active ? "" : "opacity-60")}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-900 dark:text-slate-100">{department.name}</div>
+                            {department.description && (
+                              <div className="text-xs text-slate-500 dark:text-slate-400">{department.description}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                            {departments.find((parent) => parent.id === department.parent_id)?.name ?? "Root"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-1 text-xs font-medium",
+                                department.is_active
+                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              )}
+                            >
+                              {department.is_active ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(department)}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void deleteDepartment(department)}
+                                className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <div className="px-4 py-8 text-sm text-slate-500">No departments found.</div>
             )}

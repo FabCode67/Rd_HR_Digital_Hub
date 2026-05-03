@@ -41,6 +41,20 @@ export default function DepartmentNode({ department, level = 0 }: DepartmentNode
     };
   }, [expanded, department.id, childDepts, positions]);
 
+  const handlePositionUpdated = async () => {
+    // Reload the hierarchy when a position is updated
+    setLoading(true);
+    try {
+      const tree = await apiClient.department.getHierarchy(department.id);
+      setChildDepts(tree.children || []);
+      setPositions(tree.positions || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const hasContent = (childDepts && childDepts.length > 0) || (positions && positions.length > 0);
 
   return (
@@ -92,7 +106,7 @@ export default function DepartmentNode({ department, level = 0 }: DepartmentNode
           {positions && positions.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Positions</p>
-              <PositionTree positions={positions} level={level + 1} />
+              <PositionTree positions={positions} level={level + 1} onPositionUpdated={handlePositionUpdated} />
             </div>
           )}
 

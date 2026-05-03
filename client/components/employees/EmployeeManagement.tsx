@@ -23,6 +23,12 @@ type FormState = {
   status: EmployeeStatus;
 };
 
+type PositionAssignmentState = {
+  departmentId: string;
+  positionId: string;
+  startDate: string;
+};
+
 const EMPLOYEE_STATUSES: EmployeeStatus[] = ["ACTIVE", "INACTIVE", "SUSPENDED", "TERMINATED"];
 
 const emptyForm: FormState = {
@@ -32,6 +38,12 @@ const emptyForm: FormState = {
   date_of_birth: "",
   national_id: "",
   status: "ACTIVE",
+};
+
+const emptyPositionAssignment: PositionAssignmentState = {
+  departmentId: "",
+  positionId: "",
+  startDate: new Date().toISOString().slice(0, 10),
 };
 
 function toDateTimeString(dateOnly: string): string {
@@ -51,6 +63,8 @@ export default function EmployeeManagement() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [positionAssignment, setPositionAssignment] = useState<PositionAssignmentState>(emptyPositionAssignment);
+  const [formPositionDepartments, setFormPositionDepartments] = useState<Position[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [currentAssignment, setCurrentAssignment] = useState<EmployeePositionDetail | null>(null);
@@ -91,12 +105,31 @@ export default function EmployeeManagement() {
     }
   };
 
+  const loadPositionsForFormDepartment = async (departmentId: string) => {
+    if (!departmentId) {
+      setFormPositionDepartments([]);
+      setPositionAssignment((current) => ({ ...current, positionId: "" }));
+      return;
+    }
+
+    try {
+      const positions = await apiClient.position.getAll(departmentId, 0, 100);
+      setFormPositionDepartments(positions);
+      setPositionAssignment((current) => ({ ...current, positionId: "" }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load positions");
+      setFormPositionDepartments([]);
+    }
+  };
+
   useEffect(() => {
     void loadEmployees();
   }, []);
 
   const resetForm = () => {
     setForm(emptyForm);
+    setPositionAssignment(emptyPositionAssignment);
+    setFormPositionDepartments([]);
     setEditingId(null);
   };
 
@@ -127,10 +160,24 @@ export default function EmployeeManagement() {
     };
 
     try {
+      let employeeId = editingId;
+
       if (editingId) {
         await apiClient.employee.update(editingId, payload);
       } else {
-        await apiClient.employee.create(payload as EmployeeCreateInput);
+        const newEmployee = await apiClient.employee.create(payload as EmployeeCreateInput);
+        employeeId = newEmployee.id;
+      }
+
+      // Assign position if provided during creation (only for new employees)
+      if (!editingId && employeeId && positionAssignment.positionId) {
+        const positionPayload = {
+          employee_id: employeeId,
+          position_id: positionAssignment.positionId,
+          start_date: toDateTimeString(positionAssignment.startDate),
+        };
+
+        await apiClient.employee.assignPosition(employeeId, positionPayload);
       }
 
       await loadEmployees();
@@ -289,8 +336,8 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-4">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-4 min-w-0">
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <form onSubmit={submitForm} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -367,6 +414,61 @@ export default function EmployeeManagement() {
                 </label>
               </div>
 
+              {!editingId && (
+                <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">Assign Position (Optional)</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-sm">
+                      <span className="text-slate-600 dark:text-slate-300">Department</span>
+                      <select
+                        value={positionAssignment.departmentId}
+                        onChange={(event) => {
+                          setPositionAssignment((current) => ({ ...current, departmentId: event.target.value }));
+                          void loadPositionsForFormDepartment(event.target.value);
+                        }}
+                        className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                      >
+                        <option value="">Select department</option>
+                        {departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-1 text-sm">
+                      <span className="text-slate-600 dark:text-slate-300">Position</span>
+                      <select
+                        value={positionAssignment.positionId}
+                        onChange={(event) => setPositionAssignment((current) => ({ ...current, positionId: event.target.value }))}
+                        className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                        disabled={!positionAssignment.departmentId}
+                      >
+                        <option value="">
+                          {positionAssignment.departmentId ? "Select position" : "Select a department first"}
+                        </option>
+                        {formPositionDepartments.map((position) => (
+                          <option key={position.id} value={position.id}>
+                            {position.title} {position.is_vacant ? "• Vacant" : "• Occupied"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="space-y-1 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Start Date</span>
+                    <input
+                      type="date"
+                      value={positionAssignment.startDate}
+                      onChange={(event) => setPositionAssignment((current) => ({ ...current, startDate: event.target.value }))}
+                      className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    />
+                  </label>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
@@ -399,72 +501,126 @@ export default function EmployeeManagement() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading
               </div>
             ) : employees.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-                  <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-950/40 dark:text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Name</th>
-                      <th className="px-4 py-3 font-medium">Email</th>
-                      <th className="px-4 py-3 font-medium">Phone</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {employees.map((employee) => (
-                      <tr key={employee.id} className={cn(employee.status === "ACTIVE" ? "" : "opacity-60")}>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-900 dark:text-slate-100">{employee.full_name}</div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{employee.email}</td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{employee.phone || "-"}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-1 text-xs font-medium",
-                              getStatusBadgeColor(employee.status)
-                            )}
-                          >
-                            {employee.status.charAt(0) + employee.status.slice(1).toLowerCase()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(employee)}
-                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                            >
-                              <Pencil className="h-3.5 w-3.5" /> Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void openPositionModal(employee)}
-                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 dark:border-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-950/30"
-                            >
-                              <Calendar className="h-3.5 w-3.5" /> Position
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteEmployee(employee)}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> Delete
-                            </button>
-                          </div>
-                        </td>
+              <>
+                {/* Mobile Card View */}
+                <div className="block md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+                  {employees.map((employee) => (
+                    <div
+                      key={employee.id}
+                      className={cn("p-4 space-y-3", employee.status === "ACTIVE" ? "" : "opacity-60")}
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{employee.full_name}</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">{employee.email}</p>
+                        {employee.phone && (
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{employee.phone}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-1 text-xs font-medium",
+                            getStatusBadgeColor(employee.status)
+                          )}
+                        >
+                          {employee.status.charAt(0) + employee.status.slice(1).toLowerCase()}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(employee)}
+                          className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void openPositionModal(employee)}
+                          className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 dark:border-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                        >
+                          <Calendar className="h-3.5 w-3.5" /> Position
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteEmployee(employee)}
+                          className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                    <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-950/40 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Name</th>
+                        <th className="px-4 py-3 font-medium">Email</th>
+                        <th className="px-4 py-3 font-medium">Phone</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {employees.map((employee) => (
+                        <tr key={employee.id} className={cn(employee.status === "ACTIVE" ? "" : "opacity-60")}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-900 dark:text-slate-100">{employee.full_name}</div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{employee.email}</td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{employee.phone || "-"}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-1 text-xs font-medium",
+                                getStatusBadgeColor(employee.status)
+                              )}
+                            >
+                              {employee.status.charAt(0) + employee.status.slice(1).toLowerCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(employee)}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void openPositionModal(employee)}
+                                className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 dark:border-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                              >
+                                <Calendar className="h-3.5 w-3.5" /> Position
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void deleteEmployee(employee)}
+                                className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <div className="px-4 py-8 text-sm text-slate-500">No employees found.</div>
             )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 min-w-0">
           <h3 className="mb-4 text-sm font-medium text-slate-900 dark:text-slate-100">Summary</h3>
           <div className="space-y-3">
             <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/40">
@@ -489,10 +645,10 @@ export default function EmployeeManagement() {
 
       {selectedEmployee && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/50">
-          <div className="w-full max-w-3xl rounded-t-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <div className="w-full rounded-t-lg border border-slate-200 bg-white p-4 sm:p-6 dark:border-slate-800 dark:bg-slate-900 sm:max-w-3xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
                   Position Management - {selectedEmployee.full_name}
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -502,14 +658,14 @@ export default function EmployeeManagement() {
               <button
                 type="button"
                 onClick={closePositionModal}
-                className="rounded-md p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="flex-shrink-0 rounded-md p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40 md:grid-cols-3">
+              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40 grid-cols-1 md:grid-cols-3">
                 <label className="space-y-1 text-sm">
                   <span className="text-slate-600 dark:text-slate-300">Department</span>
                   <select
@@ -555,12 +711,12 @@ export default function EmployeeManagement() {
                   />
                 </label>
 
-                <div className="flex items-center gap-2 md:col-span-3">
+                <div className="flex flex-col gap-2 md:col-span-3 md:flex-row md:items-center">
                   <button
                     type="button"
                     onClick={() => void submitAssignment()}
                     disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {currentAssignment ? "Reassign Position" : "Assign Position"}
@@ -570,7 +726,7 @@ export default function EmployeeManagement() {
                       type="button"
                       onClick={() => void endCurrentAssignment()}
                       disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                     >
                       End Current Assignment
                     </button>

@@ -2,7 +2,7 @@
 Pydantic schemas for request/response validation.
 """
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, validator
 from app.models import EmployeeStatus, FormFieldType
@@ -128,7 +128,7 @@ class EmployeeBase(BaseModel):
     full_name: str
     email: EmailStr
     phone: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
+    date_of_birth: Optional[date] = None
     national_id: Optional[str] = None
     status: EmployeeStatus = EmployeeStatus.ACTIVE
 
@@ -143,7 +143,7 @@ class EmployeeUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
+    date_of_birth: Optional[date] = None
     national_id: Optional[str] = None
     status: Optional[EmployeeStatus] = None
 
