@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   ChevronLeft,
@@ -76,13 +77,31 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
           {!collapsed ? (
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rwanda HR</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="relative h-7 w-12 overflow-hidden rounded-md bg-white p-0.5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+                <Image
+                  src="/NCBA_LOGO_2.jpg"
+                  alt="NCBA"
+                  fill
+                  sizes="48px"
+                  className="object-cover"
+                  priority
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">NCBA HR</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
+              </div>
             </div>
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-              <LayoutDashboard className="h-4 w-4" />
+            <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+              <Image
+                src="/NCBA_LOGO_2.jpg"
+                alt="NCBA"
+                fill
+                sizes="32px"
+                className="object-cover"
+              />
             </div>
           )}
 
@@ -116,9 +135,20 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         aria-hidden={!mobileOpen}
       >
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rwanda HR</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="relative h-7 w-12 overflow-hidden rounded-md bg-white p-0.5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+              <Image
+                src="/NCBA_LOGO_2.jpg"
+                alt="NCBA"
+                fill
+                sizes="48px"
+                className="object-cover"
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">NCBA HR</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
+            </div>
           </div>
 
           <button
@@ -148,6 +178,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               </button>
               <div>
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Dashboard</p>
+              </div>
+              <div className="ml-1 hidden items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-cyan-700 sm:inline-flex dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-300">
+                NCBA
               </div>
             </div>
 
