@@ -27,6 +27,7 @@ export interface Employee {
   id: UUID;
   full_name: string;
   email: string;
+  role?: "admin" | "staff";
   phone?: string;
   date_of_birth?: string;
   national_id?: string;
@@ -219,4 +220,74 @@ export interface HierarchyData {
   departments: Department[];
   positions: PositionTreeNode[];
   errors?: string[];
+}
+
+export type FormFieldType =
+  | "text"
+  | "email"
+  | "phone"
+  | "number"
+  | "date"
+  | "datetime"
+  | "select"
+  | "checkbox"
+  | "radio"
+  | "textarea";
+
+export interface FormField {
+  id: UUID;
+  field_name: string;
+  field_label: string;
+  field_type: FormFieldType;
+  is_required: boolean;
+  help_text?: string;
+  options?: string;
+  order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Form {
+  id: UUID;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  fields?: FormField[];
+}
+
+export interface FormStatus {
+  form: Form;
+  response_id?: UUID | null;
+  is_completed: boolean;
+  submitted_at?: string | null;
+}
+
+export interface FormAnswerInput {
+  field_id: UUID;
+  value?: string | null;
+}
+
+export interface FormFieldCreate {
+  field_name: string;
+  field_label: string;
+  field_type: FormFieldType;
+  is_required: boolean;
+  help_text?: string;
+  options?: string;
+  order: number;
+}
+
+export interface FormCreate {
+  name: string;
+  description?: string;
+  is_active?: boolean;
+  fields?: FormFieldCreate[];
+}
+
+export interface FormUpdate {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
 }

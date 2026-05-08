@@ -47,6 +47,12 @@ def create_app() -> FastAPI:
         forms.router,
         prefix=settings.API_V1_PREFIX
     )
+    # Auth router
+    from app.routers import auth as auth_router
+    app.include_router(
+        auth_router.router,
+        prefix=settings.API_V1_PREFIX
+    )
 
     # Health check endpoint
     @app.get("/")

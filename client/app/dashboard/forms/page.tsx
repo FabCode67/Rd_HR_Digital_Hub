@@ -1,13 +1,14 @@
+import FormManagement from "@/components/forms/FormManagement";
+
 export const metadata = {
-  title: "Forms - Rwanda HR Digital Hub",
-  description: "Forms overview",
+  title: "Forms Management - Rwanda HR Digital Hub",
+  description: "Create and manage customizable forms",
 };
 
 export default function FormsPage() {
   return (
-    <section className="space-y-2 min-w-0">
-      <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Forms</h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400">Coming soon</p>
+    <section className="space-y-6 min-w-0">
+      <FormManagement />
     </section>
   );
 }

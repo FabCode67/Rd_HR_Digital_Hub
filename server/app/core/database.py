@@ -2,7 +2,7 @@
 Database configuration and session management.
 """
 from typing import Generator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
 from app.core.config import settings
@@ -46,6 +46,47 @@ def get_db() -> Generator[Session, None, None]:
 def init_db():
     """Initialize database (create all tables)."""
     Base.metadata.create_all(bind=engine)
+    _ensure_employee_auth_columns()
+
+
+def _ensure_employee_auth_columns() -> None:
+    """Backfill auth columns for databases created before auth fields existed."""
+    inspector = inspect(engine)
+    if "employees" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("employees")}
+
+    statements = []
+    if "hashed_password" not in columns:
+        statements.append(
+            text("ALTER TABLE employees ADD COLUMN hashed_password VARCHAR(255)")
+        )
+    if "role" not in columns:
+        statements.append(
+            text("ALTER TABLE employees ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'staff'")
+        )
+    if "status" not in columns:
+        statements.append(
+            text("ALTER TABLE employees ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'")
+        )
+    
+    # Also ensure existing rows have the correct enum format for existing role column
+    # This handles databases that may have been created with lowercase defaults
+    if columns and "role" in columns:
+        statements.append(
+            text("UPDATE employees SET role = 'STAFF' WHERE role = 'staff' OR role IS NULL")
+        )
+        statements.append(
+            text("UPDATE employees SET role = 'ADMIN' WHERE role = 'admin'")
+        )
+
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(statement)
 
 
 def drop_db():

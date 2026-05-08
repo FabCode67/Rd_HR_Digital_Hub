@@ -1,8 +1,12 @@
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { ArrowRight, Building2, ChartNoAxesCombined, ShieldCheck } from "lucide-react"
-
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/AuthContext"
 
 const valuePoints = [
   {
@@ -26,6 +30,26 @@ const valuePoints = [
 ]
 
 export default function Page() {
+  const { isAuthenticated, isLoading, user, logout } = useAuth()
+  const router = useRouter()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const displayName = user?.full_name || (user?.email ? user.email.split("@")[0] : "")
+
+  useEffect(() => {
+    // Do not auto-redirect logged-in users away from the landing page.
+    // Landing page should be accessible even when authenticated.
+  }, [isLoading, isAuthenticated, router])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-cyan-500"></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <main className="relative min-h-svh overflow-hidden bg-slate-950 text-white">
       <div className="pointer-events-none absolute inset-0">
@@ -66,12 +90,58 @@ export default function Page() {
               </a>
             </div>
 
-            <Button
-              asChild
-              className="h-9 rounded-full bg-cyan-400 px-4 text-slate-950 hover:bg-cyan-300"
-            >
-              <Link href="/dashboard">Open Platform</Link>
-            </Button>
+            {isAuthenticated ? (
+              <div className="relative">
+                <button
+                  onClick={() => setMenuOpen((s) => !s)}
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-sm text-white"
+                >
+                  {displayName}
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.936a.75.75 0 011.08 1.04l-4.25 4.507a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-md bg-white/95 shadow-lg">
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        router.push('/forms')
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
+                    >
+                      Forms
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        router.push('/profile')
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
+                    >
+                      Profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        logout();
+                        router.push("/");
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button
+                asChild
+                className="h-9 rounded-full bg-cyan-400 px-4 text-slate-950 hover:bg-cyan-300"
+              >
+                <Link href="/login">Sign In</Link>
+              </Button>
+            )}
           </div>
         </header>
 
@@ -95,8 +165,8 @@ export default function Page() {
                 size="lg"
                 className="h-11 rounded-full bg-cyan-400 px-6 text-slate-950 hover:bg-cyan-300"
               >
-                <Link href="/dashboard" className="gap-2">
-                  Launch Dashboard
+                <Link href="/login" className="gap-2">
+                  Sign In
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
@@ -106,7 +176,7 @@ export default function Page() {
                 variant="outline"
                 className="h-11 rounded-full border-white/25 bg-white/5 px-6 text-white hover:bg-white/10"
               >
-                <Link href="/org">Explore Org View</Link>
+                <Link href="/login">Learn More</Link>
               </Button>
             </div>
           </div>
@@ -222,7 +292,7 @@ export default function Page() {
                 size="lg"
                 className="h-11 rounded-full bg-cyan-400 px-6 text-slate-950 hover:bg-cyan-300"
               >
-                <Link href="/dashboard">Start With Dashboard</Link>
+                <Link href="/login">Sign In Now</Link>
               </Button>
             </div>
           </div>

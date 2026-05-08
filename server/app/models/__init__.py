@@ -9,7 +9,9 @@ from app.models.models import (
     FormResponse,
     FormAnswer,
     EmployeeStatus,
+    UserRole,
     FormFieldType,
+    StaffFormAssignment,
 )
 
 __all__ = [
@@ -22,5 +24,7 @@ __all__ = [
     "FormResponse",
     "FormAnswer",
     "EmployeeStatus",
+    "UserRole",
     "FormFieldType",
+    "StaffFormAssignment",
 ]

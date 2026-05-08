@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,12 +20,13 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 type DashboardShellProps = {
   children: React.ReactNode;
 };
 
-const navItems = [
+const baseNavItems = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/org", label: "Organization", icon: Network },
   { href: "/dashboard", label: "Departments", icon: Building2 },
@@ -34,12 +35,36 @@ const navItems = [
   { href: "/dashboard/forms", label: "Forms", icon: ListChecks },
 ];
 
+const adminNavItems = [
+  { href: "/dashboard/staff", label: "Staff Management", icon: Users },
+];
+
 export default function DashboardShell({ children }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const sidebarWidthClass = collapsed ? "md:pl-16" : "md:pl-60";
+
+  // Combine nav items based on user role
+  const navItems = user?.role === "admin" ? [...baseNavItems, ...adminNavItems] : baseNavItems;
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  // Get user initials for avatar
+  const userInitials = user?.full_name
+    ? user.full_name
+        .split(" ")
+        .slice(0, 2)
+        .map((word: string) => word[0])
+        .join("")
+        .toUpperCase()
+    : "U";
 
   const renderNav = (compact: boolean, onNavigate?: () => void) => (
     <nav className="space-y-1 p-2">
@@ -190,23 +215,46 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 onClick={() => setProfileOpen((value) => !value)}
                 className="flex items-center gap-2 rounded-full border border-slate-200 px-2 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-                  RH
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-xs font-semibold text-white">
+                  {userInitials}
                 </span>
-                <span className="hidden sm:inline">Profile</span>
+                <span className="hidden sm:inline">{user?.full_name || "Profile"}</span>
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 top-11 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-800 dark:bg-slate-900">
-                  <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <CircleUserRound className="h-4 w-4" />
-                    Profile
-                  </button>
+                <div className="absolute right-0 top-11 z-20 w-56 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                  {user && (
+                    <>
+                      <div className="border-b border-slate-200 px-3 py-3 dark:border-slate-800">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                          {user.full_name}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                          {user.email}
+                        </p>
+                        <p className="text-xs font-medium text-cyan-600 dark:text-cyan-400 mt-1">
+                          {user.role === "admin" ? "Administrator" : "Staff"}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                  <Link href="/profile">
+                    <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                      <CircleUserRound className="h-4 w-4" />
+                      View Profile
+                    </button>
+                  </Link>
                   <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
                     <Settings className="h-4 w-4" />
                     Settings
                   </button>
-                  <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40">
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                  >
                     <LogOut className="h-4 w-4" />
                     Sign out
                   </button>

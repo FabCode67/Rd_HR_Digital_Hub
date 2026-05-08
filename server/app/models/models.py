@@ -63,6 +63,12 @@ class EmployeeStatus(str, enum.Enum):
     TERMINATED = "TERMINATED"
 
 
+class UserRole(str, enum.Enum):
+    """User role enumeration."""
+    ADMIN = "admin"
+    STAFF = "staff"
+
+
 class Employee(Base):
     """Employee model - represents organization staff."""
     __tablename__ = "employees"
@@ -73,6 +79,9 @@ class Employee(Base):
     phone = Column(String(20), nullable=True)
     date_of_birth = Column(DateTime, nullable=True)
     national_id = Column(String(50), nullable=True, unique=True)
+    # Authentication fields
+    hashed_password = Column(String(255), nullable=True)
+    role = Column(Enum(UserRole), default=UserRole.STAFF, index=True)
     status = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -201,3 +210,22 @@ class FormAnswer(Base):
     
     def __repr__(self):
         return f"<FormAnswer(id={self.id}, response_id={self.response_id}, field_id={self.field_id})>"
+
+
+class StaffFormAssignment(Base):
+    """StaffFormAssignment model - tracks which forms are assigned to which staff members."""
+    __tablename__ = "staff_form_assignments"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    form_id = Column(UUID(as_uuid=True), ForeignKey("forms.id"), nullable=False, index=True)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    form = relationship("Form", foreign_keys=[form_id])
+    
+    def __repr__(self):
+        return f"<StaffFormAssignment(employee_id={self.employee_id}, form_id={self.form_id})>"

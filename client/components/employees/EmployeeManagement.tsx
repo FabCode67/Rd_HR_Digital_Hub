@@ -336,7 +336,7 @@ export default function EmployeeManagement() {
         </div>
       )}
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 grid-cols-1">
         <div className="space-y-4 min-w-0">
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <form onSubmit={submitForm} className="space-y-3">
@@ -620,27 +620,6 @@ export default function EmployeeManagement() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 min-w-0">
-          <h3 className="mb-4 text-sm font-medium text-slate-900 dark:text-slate-100">Summary</h3>
-          <div className="space-y-3">
-            <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/40">
-              <div className="text-xs text-slate-600 dark:text-slate-400">Total Employees</div>
-              <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{employees.length}</div>
-            </div>
-            <div className="rounded-lg bg-emerald-50 p-3 dark:bg-emerald-950/40">
-              <div className="text-xs text-emerald-700 dark:text-emerald-300">Active</div>
-              <div className="text-2xl font-semibold text-emerald-900 dark:text-emerald-100">
-                {employees.filter((employee) => employee.status === "ACTIVE").length}
-              </div>
-            </div>
-            <div className="rounded-lg bg-red-50 p-3 dark:bg-red-950/40">
-              <div className="text-xs text-red-700 dark:text-red-300">Inactive</div>
-              <div className="text-2xl font-semibold text-red-900 dark:text-red-100">
-                {employees.filter((employee) => employee.status !== "ACTIVE").length}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {selectedEmployee && (

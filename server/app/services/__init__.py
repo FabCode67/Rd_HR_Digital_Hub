@@ -2,6 +2,7 @@
 from app.services.department_service import DepartmentService
 from app.services.position_service import PositionService
 from app.services.employee_service import EmployeeService
+from . import auth_service
 from app.services.form_service import FormService, FormResponseService
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "EmployeeService",
     "FormService",
     "FormResponseService",
+    "auth_service",
 ]

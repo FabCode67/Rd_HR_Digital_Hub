@@ -16,7 +16,15 @@ class EmployeeService:
     @staticmethod
     def create(db: Session, obj_in: EmployeeCreate) -> Employee:
         """Create a new employee."""
-        db_obj = Employee(**obj_in.dict())
+        # Accept either a Pydantic model or a raw dict for flexibility
+        if hasattr(obj_in, "dict"):
+            payload = obj_in.dict()
+        elif isinstance(obj_in, dict):
+            payload = obj_in
+        else:
+            payload = dict(obj_in)
+
+        db_obj = Employee(**payload)
         db.add(db_obj)
         db.commit()
         db.refresh(db_obj)

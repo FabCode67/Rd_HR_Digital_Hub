@@ -22,7 +22,10 @@ from app.models import (
     FormField,
     FormFieldType,
     EmployeeStatus,
+    UserRole,
+    StaffFormAssignment,
 )
+from app.services.auth_service import get_password_hash
 
 # -----------------------------
 # Position structure (configurable)
@@ -222,13 +225,16 @@ def seed_employees(db):
     ]
     
     employees = []
+    default_password_hash = get_password_hash("NCBAStaff@123")
     for emp_data in employees_data:
         emp = Employee(
             id=uuid4(),
             full_name=emp_data["name"],
             email=emp_data["email"],
             phone="+250788123456",
-            status=emp_data["status"]
+            status=emp_data["status"],
+            hashed_password=default_password_hash,
+            role=UserRole.STAFF
         )
         employees.append(emp)
         db.add(emp)
@@ -280,54 +286,93 @@ def seed_employee_positions(db, employees, positions):
 
 
 def seed_forms(db):
-    """Create sample onboarding forms."""
+    """Create sample onboarding forms with rich-text descriptions."""
     print("Seeding forms...")
     
     forms_data = [
         {
-            "name": "Personal Information Form",
-            "description": "Collect employee personal details",
+            "name": "Background/Reference Checks Consent Form",
+            "description": """
+<h2>Background/Reference Checks Consent Form</h2>
+<p>This form is required for all new employees as part of the hiring process.</p>
+<h3>Terms & Conditions</h3>
+<p>By signing this form, you authorize NCBA and/or its appointed agents to conduct background and reference checks. 
+This may include:</p>
+<ul>
+<li>Verification of employment history</li>
+<li>Educational credentials verification</li>
+<li>Criminal background check</li>
+<li>Reference checks with previous employers</li>
+</ul>
+<p>All information collected will be handled in accordance with privacy regulations.</p>
+            """,
             "fields": [
                 {"name": "full_name", "label": "Full Name", "type": FormFieldType.TEXT, "required": True},
-                {"name": "email", "label": "Email Address", "type": FormFieldType.EMAIL, "required": True},
-                {"name": "phone", "label": "Phone Number", "type": FormFieldType.PHONE, "required": True},
                 {"name": "date_of_birth", "label": "Date of Birth", "type": FormFieldType.DATE, "required": True},
-                {"name": "nationality", "label": "Nationality", "type": FormFieldType.TEXT, "required": True},
-                {"name": "address", "label": "Residential Address", "type": FormFieldType.TEXTAREA, "required": True},
-            ]
+                {"name": "national_id", "label": "National ID Number", "type": FormFieldType.TEXT, "required": True},
+                {"name": "consent", "label": "I authorize background and reference checks", "type": FormFieldType.CHECKBOX, "required": True},
+                {"name": "signature_date", "label": "Signature Date", "type": FormFieldType.DATE, "required": True},
+            ],
         },
         {
-            "name": "Insurance Form",
-            "description": "Health and life insurance enrollment",
+            "name": "Employee Code of Conduct Pledge",
+            "description": """
+<h2>Employee Code of Conduct Pledge</h2>
+<p>All NCBA employees are required to acknowledge and pledge compliance with the NCBA Code of Conduct and Ethics.</p>
+<h3>Code of Conduct Summary</h3>
+<ul>
+<li>Maintain professional standards at all times</li>
+<li>Treat all colleagues with respect and dignity</li>
+<li>Follow all company policies and procedures</li>
+<li>Report any violations or concerns through appropriate channels</li>
+<li>Uphold the values and reputation of NCBA</li>
+</ul>
+<p>Failure to comply may result in disciplinary action up to and including termination.</p>
+            """,
             "fields": [
-                {"name": "insurance_type", "label": "Insurance Type", "type": FormFieldType.SELECT, "required": True},
-                {"name": "beneficiary_name", "label": "Beneficiary Name", "type": FormFieldType.TEXT, "required": True},
-                {"name": "beneficiary_phone", "label": "Beneficiary Phone", "type": FormFieldType.PHONE, "required": True},
-                {"name": "relationship", "label": "Relationship", "type": FormFieldType.TEXT, "required": True},
-                {"name": "insurance_amount", "label": "Coverage Amount (RWF)", "type": FormFieldType.NUMBER, "required": True},
-            ]
+                {"name": "employee_name", "label": "Employee Name", "type": FormFieldType.TEXT, "required": True},
+                {"name": "position", "label": "Position", "type": FormFieldType.TEXT, "required": True},
+                {"name": "department", "label": "Department", "type": FormFieldType.TEXT, "required": True},
+                {"name": "pledge_acceptance", "label": "I pledge to uphold the NCBA Code of Conduct", "type": FormFieldType.CHECKBOX, "required": True},
+                {"name": "acknowledgement_date", "label": "Date of Acknowledgement", "type": FormFieldType.DATE, "required": True},
+            ],
         },
         {
-            "name": "Loan Application Form",
-            "description": "Employee loan application",
+            "name": "Information Security Policy Acknowledgement",
+            "description": """
+<h2>Information Security Policy Acknowledgement</h2>
+<p>All NCBA staff must acknowledge receipt and understanding of the Information Security Policy.</p>
+<h3>Key Security Responsibilities</h3>
+<ul>
+<li>Protect confidential and sensitive information</li>
+<li>Use secure passwords and keep credentials confidential</li>
+<li>Report security incidents immediately</li>
+<li>Comply with data protection and privacy regulations</li>
+<li>Do not share access credentials or create backdoor access</li>
+</ul>
+<p>Your role is critical in maintaining the security and integrity of NCBA systems and data.</p>
+            """,
             "fields": [
-                {"name": "loan_type", "label": "Loan Type", "type": FormFieldType.SELECT, "required": True},
-                {"name": "loan_amount", "label": "Requested Amount (RWF)", "type": FormFieldType.NUMBER, "required": True},
-                {"name": "loan_purpose", "label": "Purpose of Loan", "type": FormFieldType.TEXTAREA, "required": True},
-                {"name": "repayment_period", "label": "Repayment Period (months)", "type": FormFieldType.NUMBER, "required": True},
-                {"name": "guarantor_name", "label": "Guarantor Name", "type": FormFieldType.TEXT, "required": True},
-            ]
+                {"name": "employee_name", "label": "Employee Name", "type": FormFieldType.TEXT, "required": True},
+                {"name": "department", "label": "Department", "type": FormFieldType.TEXT, "required": True},
+                {"name": "security_acknowledgement", "label": "I acknowledge the Information Security Policy", "type": FormFieldType.CHECKBOX, "required": True},
+                {"name": "acknowledgement_date", "label": "Date", "type": FormFieldType.DATE, "required": True},
+            ],
         },
         {
-            "name": "Emergency Contact Form",
-            "description": "Emergency contact information",
+            "name": "Employee Onboarding Survey",
+            "description": """
+<h2>Employee Onboarding Survey</h2>
+<p>Please provide feedback on your onboarding experience to help us improve our processes.</p>
+            """,
             "fields": [
-                {"name": "emergency_contact_name", "label": "Contact Name", "type": FormFieldType.TEXT, "required": True},
-                {"name": "emergency_contact_phone", "label": "Contact Phone", "type": FormFieldType.PHONE, "required": True},
-                {"name": "relationship", "label": "Relationship", "type": FormFieldType.TEXT, "required": True},
-                {"name": "secondary_contact_name", "label": "Secondary Contact Name", "type": FormFieldType.TEXT, "required": False},
-                {"name": "secondary_contact_phone", "label": "Secondary Contact Phone", "type": FormFieldType.PHONE, "required": False},
-            ]
+                {"name": "employee_name", "label": "Your Name", "type": FormFieldType.TEXT, "required": True},
+                {"name": "department", "label": "Department", "type": FormFieldType.TEXT, "required": True},
+                {"name": "start_date", "label": "Your Start Date", "type": FormFieldType.DATE, "required": True},
+                {"name": "onboarding_experience", "label": "How would you rate your onboarding experience?", "type": FormFieldType.SELECT, "required": True, "options": "Excellent,Good,Satisfactory,Needs Improvement"},
+                {"name": "clear_expectations", "label": "Were your role expectations clear?", "type": FormFieldType.RADIO, "required": True, "options": "Yes,No,Somewhat"},
+                {"name": "comments", "label": "Additional Comments", "type": FormFieldType.TEXTAREA, "required": False},
+            ],
         },
     ]
     
@@ -344,13 +389,19 @@ def seed_forms(db):
         
         fields = []
         for idx, field_data in enumerate(form_data["fields"]):
+            # Handle options field
+            options_str = None
+            if "options" in field_data:
+                options_str = field_data["options"]
+            
             field = FormField(
                 id=uuid4(),
                 form_id=form.id,
                 field_name=field_data["name"],
                 field_label=field_data["label"],
                 field_type=field_data["type"],
-                is_required=field_data["required"],
+                is_required=field_data.get("required", True),
+                options=options_str,
                 order=idx
             )
             fields.append(field)
@@ -359,8 +410,75 @@ def seed_forms(db):
         forms.append(form)
     
     db.commit()
-    print(f"Created {len(forms)} forms")
+    print(f"Created {len(forms)} customizable forms")
     return forms
+
+
+def seed_admin(db):
+    """Create admin user for authentication."""
+    print("Seeding admin user...")
+    
+    # Check if admin already exists
+    existing_admin = db.query(Employee).filter(
+        Employee.email == "admin@example.com"
+    ).first()
+    
+    if existing_admin:
+        print("Admin user already exists (admin@example.com)")
+        return existing_admin
+    
+    admin = Employee(
+        id=uuid4(),
+        full_name="System Administrator",
+        email="admin@example.com",
+        phone="+250788000001",
+        hashed_password=get_password_hash("AdminPass123!"),
+        role=UserRole.ADMIN,
+        status=EmployeeStatus.ACTIVE
+    )
+    db.add(admin)
+    db.commit()
+    print("Created admin user: admin@example.com / AdminPass123!")
+    return admin
+
+
+def seed_form_assignments(db, employees, forms):
+    """Assign required forms to all staff members."""
+    print("Seeding form assignments...")
+    
+    # Define which forms are required for all staff (by form name)
+    required_form_names = [
+        "BACKGROUND/REFERENCE CHECKS CONSENT FORM",
+        "EMPLOYEE CONDUCT PLEDGE",
+        "STATEMENT OF INFORMATION PROCESSING RESPONSIBILITIES FOR ALL BANK STAFF",
+    ]
+    
+    # Get form objects
+    required_forms = [
+        form for form in forms 
+        if form.name in required_form_names
+    ]
+    
+    # Assign required forms to all staff members
+    assignment_count = 0
+    for employee in employees:
+        for form in required_forms:
+            # Check if assignment already exists
+            existing = db.query(StaffFormAssignment).filter(
+                StaffFormAssignment.employee_id == employee.id,
+                StaffFormAssignment.form_id == form.id
+            ).first()
+            
+            if not existing:
+                assignment = StaffFormAssignment(
+                    employee_id=employee.id,
+                    form_id=form.id
+                )
+                db.add(assignment)
+                assignment_count += 1
+    
+    db.commit()
+    print(f"Created {assignment_count} form assignments")
 
 
 def main():
@@ -371,6 +489,7 @@ def main():
         print("Rwanda HR Digital Hub - Database Seeding")
         print("="*60 + "\n")
         
+        seed_admin(db)
         dept_ids = seed_departments(db)
         positions = seed_positions(db, dept_ids)
         employees = seed_employees(db)

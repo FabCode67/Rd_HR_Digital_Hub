@@ -9,8 +9,9 @@ from app.core.database import get_db
 from app.models import Position
 from app.schemas import PositionCreate, PositionUpdate, PositionResponse, PositionTreeNode, DepartmentHierarchyNode
 from app.services import PositionService, DepartmentService
+from app.routers.auth import require_admin
 
-router = APIRouter(prefix="/positions", tags=["positions"])
+router = APIRouter(prefix="/positions", tags=["positions"], dependencies=[Depends(require_admin)])
 
 
 @router.post("", response_model=PositionResponse)

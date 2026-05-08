@@ -1,7 +1,8 @@
 import { Geist_Mono, Space_Grotesk, Playfair_Display } from "next/font/google"
 
-import "./globals.css"
+import "./globals.css" // @ts-ignore
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProvider } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils";
 
 const sans = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans" })
@@ -35,7 +36,9 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   )

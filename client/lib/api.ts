@@ -14,6 +14,12 @@ import {
   EmployeePositionAssignment,
   EmployeePositionDetail,
   EmployeeUpdateInput,
+  Form,
+  FormAnswerInput,
+  FormCreate,
+  FormUpdate,
+  FormFieldCreate,
+  FormStatus,
   Position,
   PositionCreateInput,
   PositionUpdateInput,
@@ -43,6 +49,25 @@ const ENDPOINTS = {
   // Employee endpoints
   EMPLOYEES: `${API_PREFIX}/employees`,
   EMPLOYEE_BY_ID: (id: string) => `${API_PREFIX}/employees/${id}`,
+
+  // Auth endpoints
+  AUTH_ME: `${API_PREFIX}/auth/me`,
+
+  // Form endpoints
+  FORMS: `${API_PREFIX}/forms`,
+  MY_FORMS: `${API_PREFIX}/forms/me`,
+  FORM_BY_ID: (id: string) => `${API_PREFIX}/forms/${id}`,
+  FORM_RESPONSE_ME: (id: string) => `${API_PREFIX}/forms/${id}/responses/me`,
+  FORM_ASSIGN: (formId: string, employeeId: string) =>
+    `${API_PREFIX}/forms/${formId}/assign/${employeeId}`,
+  FORM_UNASSIGN: (formId: string, employeeId: string) =>
+    `${API_PREFIX}/forms/${formId}/assign/${employeeId}`,
+  FORM_ASSIGNED_STAFF: (formId: string) =>
+    `${API_PREFIX}/forms/${formId}/assigned-staff`,
+  EMPLOYEE_ASSIGNED_FORMS: (employeeId: string) =>
+    `${API_PREFIX}/forms/${employeeId}/assigned-forms`,
+  FORM_FIELDS: (formId: string) => `${API_PREFIX}/forms/${formId}/fields`,
+  FORM_FIELD_DELETE: (fieldId: string) => `${API_PREFIX}/forms/fields/${fieldId}`,
 };
 
 /**
@@ -54,12 +79,19 @@ async function fetchAPI<T>(
 ): Promise<T> {
   const fullUrl = `${API_BASE_URL}${url}`;
 
+  // Get token from localStorage for authentication
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
+
+  // Add authorization header if token exists
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   try {
     const response = await fetch(fullUrl, {
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
       ...options,
     });
 
@@ -372,10 +404,88 @@ export const employeeAPI = {
 };
 
 /**
+ * Form API Methods
+ */
+export const formAPI = {
+  async getMyRequiredForms(): Promise<FormStatus[]> {
+    return fetchAPI<FormStatus[]>(ENDPOINTS.MY_FORMS);
+  },
+
+  async getById(id: string): Promise<Form> {
+    return fetchAPI<Form>(ENDPOINTS.FORM_BY_ID(id));
+  },
+
+  async submitMyForm(formId: string, answers: FormAnswerInput[]): Promise<any> {
+    return fetchAPI<any>(ENDPOINTS.FORM_RESPONSE_ME(formId), {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    });
+  },
+
+  async getAllForms(): Promise<Form[]> {
+    return fetchAPI<Form[]>(ENDPOINTS.FORMS);
+  },
+
+  async createForm(form: FormCreate): Promise<Form> {
+    return fetchAPI<Form>(ENDPOINTS.FORMS, {
+      method: "POST",
+      body: JSON.stringify(form),
+    });
+  },
+
+  async updateForm(formId: string, form: FormUpdate): Promise<Form> {
+    return fetchAPI<Form>(ENDPOINTS.FORM_BY_ID(formId), {
+      method: "PUT",
+      body: JSON.stringify(form),
+    });
+  },
+
+  async deleteForm(formId: string): Promise<{ message: string }> {
+    return fetchAPI<{ message: string }>(ENDPOINTS.FORM_BY_ID(formId), {
+      method: "DELETE",
+    });
+  },
+
+  async addFormField(formId: string, field: FormFieldCreate): Promise<any> {
+    return fetchAPI<any>(ENDPOINTS.FORM_FIELDS(formId), {
+      method: "POST",
+      body: JSON.stringify(field),
+    });
+  },
+
+  async deleteFormField(fieldId: string): Promise<{ message: string }> {
+    return fetchAPI<{ message: string }>(ENDPOINTS.FORM_FIELD_DELETE(fieldId), {
+      method: "DELETE",
+    });
+  },
+
+  async assignFormToEmployee(formId: string, employeeId: string): Promise<any> {
+    return fetchAPI<any>(ENDPOINTS.FORM_ASSIGN(formId, employeeId), {
+      method: "POST",
+    });
+  },
+
+  async unassignFormFromEmployee(formId: string, employeeId: string): Promise<any> {
+    return fetchAPI<any>(ENDPOINTS.FORM_UNASSIGN(formId, employeeId), {
+      method: "DELETE",
+    });
+  },
+
+  async getStaffAssignedToForm(formId: string): Promise<any[]> {
+    return fetchAPI<any[]>(ENDPOINTS.FORM_ASSIGNED_STAFF(formId));
+  },
+
+  async getFormsAssignedToEmployee(employeeId: string): Promise<any[]> {
+    return fetchAPI<any[]>(ENDPOINTS.EMPLOYEE_ASSIGNED_FORMS(employeeId));
+  },
+};
+
+/**
  * Combined API client
  */
 export const apiClient = {
   department: departmentAPI,
   position: positionAPI,
   employee: employeeAPI,
+  form: formAPI,
 };

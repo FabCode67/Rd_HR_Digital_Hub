@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, date
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, validator
-from app.models import EmployeeStatus, FormFieldType
+from app.models import EmployeeStatus, FormFieldType, UserRole
 
 
 # ============================================================================
@@ -131,6 +131,7 @@ class EmployeeBase(BaseModel):
     date_of_birth: Optional[date] = None
     national_id: Optional[str] = None
     status: EmployeeStatus = EmployeeStatus.ACTIVE
+    role: UserRole = UserRole.STAFF
 
 
 class EmployeeCreate(EmployeeBase):
@@ -291,11 +292,16 @@ class FormAnswerResponse(FormAnswerBase):
 class FormResponseSubmissionBase(BaseModel):
     """Base schema for FormResponse submission."""
     form_id: UUID
-    employee_id: UUID
+    employee_id: Optional[UUID] = None
 
 
 class FormResponseCreate(FormResponseSubmissionBase):
     """Schema for creating a FormResponse."""
+    answers: List[FormAnswerCreate] = []
+
+
+class FormSubmissionRequest(BaseModel):
+    """Schema for staff form submission without needing employee_id from the client."""
     answers: List[FormAnswerCreate] = []
 
 
@@ -322,6 +328,14 @@ class FormResponseDetailResponse(FormResponseResponse):
     form: FormDetailResponse
     employee: EmployeeSimple
     answers: List[FormAnswerResponse] = []
+
+
+class StaffFormStatusResponse(BaseModel):
+    """Form status payload for the signed-in employee."""
+    form: FormDetailResponse
+    response_id: Optional[UUID] = None
+    is_completed: bool = False
+    submitted_at: Optional[datetime] = None
 
 
 # ============================================================================
@@ -363,3 +377,31 @@ class OrganizationTreeNode(BaseModel):
 # Update forward references
 PositionTreeNode.model_rebuild()
 OrganizationTreeNode.model_rebuild()
+
+
+# ==========================
+# Authentication Schemas
+# ==========================
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    email: Optional[EmailStr] = None
+    role: Optional[UserRole] = None
+
+
+class CreateStaff(EmployeeCreate):
+    initial_password: Optional[str] = None
+
+
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str
