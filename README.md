@@ -15,3 +15,32 @@ CORS_ORIGINS=["http://localhost:3000", "http://localhost:8000", "http://localhos
 
 # API Settings
 API_V1_PREFIX="/api/v1"
+
+
+
+
+
+
+
+
+
+---
+
+# Frontend Environment Variables
+# Copy this file to .env.local and adjust values as needed
+
+# Backend API URL (default: http://localhost:8000)
+NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Node environment (development, production, test)
+NODE_ENV=development
+
+# Optional: Analytics tracking ID
+# NEXT_PUBLIC_ANALYTICS_ID=
+
+# Optional: Feature flags
+# NEXT_PUBLIC_ENABLE_FORMS=false
+# NEXT_PUBLIC_ENABLE_LEAVE_TRACKING=false
+# NEXT_PUBLIC_ENABLE_EXIT_FORMS=false
+# NEXT_PUBLIC_ENABLE_ANALYTICS=false
+
