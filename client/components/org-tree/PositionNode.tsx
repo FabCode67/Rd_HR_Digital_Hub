@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { PositionTreeNode, Employee, Position } from "@/lib/types";
-import { ChevronDown, ChevronRight, User, AlertCircle, Loader2, Plus, Trash2, X } from "lucide-react";
+import {
+  ChevronDown, ChevronRight, AlertCircle,
+  Loader2, Plus, Trash2, X, UserCheck,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api";
 
@@ -10,9 +13,10 @@ interface PositionNodeProps {
   node: PositionTreeNode;
   level?: number;
   onPositionUpdated?: () => void;
+  departmentMap?: Record<string, string>;
 }
 
-export default function PositionNode({ node, level = 0, onPositionUpdated }: PositionNodeProps) {
+export default function PositionNode({ node, level = 0, onPositionUpdated, departmentMap }: PositionNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,78 +28,82 @@ export default function PositionNode({ node, level = 0, onPositionUpdated }: Pos
   const [newBand, setNewBand] = useState(node.band || "");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
 
+  // Measure each child card's center X for accurate connector lines
+  const childCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [childCenters, setChildCenters] = useState<number[]>([]);
+  const [childRowWidth, setChildRowWidth] = useState(0);
+  const childRowRef = useRef<HTMLDivElement>(null);
+  const childCount = node.children?.length ?? 0;
+
+  const measureChildCenters = () => {
+    if (!childRowRef.current) return;
+    const rowRect = childRowRef.current.getBoundingClientRect();
+    const centers = childCardRefs.current
+      .filter(Boolean)
+      .map((el) => {
+        const rect = el!.getBoundingClientRect();
+        return rect.left - rowRect.left + rect.width / 2;
+      });
+    setChildCenters(centers);
+    setChildRowWidth(childRowRef.current.offsetWidth);
+  };
+
+  useEffect(() => {
+    if (!expanded || !childRowRef.current) return;
+    // Use ResizeObserver to re-measure whenever layout changes (e.g. nested expand)
+    const ob = new ResizeObserver(measureChildCenters);
+    ob.observe(childRowRef.current);
+    measureChildCenters();
+    return () => ob.disconnect();
+  }, [expanded, childCount]);
+
   const isVacant = node.is_vacant;
+  const hasChildren = childCount > 0;
+  const employeeName = node.employee?.full_name ?? null;
+  const departmentName = departmentMap?.[node.department_id] ?? null;
 
   const loadPositionDetails = async () => {
-    if (!open) return;
-    
     setLoading(true);
     setError(null);
     try {
-      // Get position details
       const pos = await apiClient.position.getById(node.id);
       setPositionDetails(pos);
       setNewBand(pos.band || "");
-
-      // Get all employees assigned to this position
       const allEmployees = await apiClient.employee.getAll(0, 100);
       const assigned: Employee[] = [];
       const available: Employee[] = [];
-
       for (const emp of allEmployees) {
         const positions = await apiClient.employee.getPositionHistory(emp.id);
-        const currentPos = positions.find((p) => p.is_current && p.position.id === node.id);
-        if (currentPos) {
-          assigned.push(emp);
-        } else {
-          available.push(emp);
-        }
+        const cur = positions.find((p) => p.is_current && p.position.id === node.id);
+        if (cur) assigned.push(emp); else available.push(emp);
       }
-
       setAssignedEmployees(assigned);
       setAvailableEmployees(available);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load position details");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (open) {
-      loadPositionDetails();
-    }
-  }, [open]);
+  useEffect(() => { if (open) loadPositionDetails(); }, [open]);
 
   const handleAddEmployee = async () => {
-    if (!selectedEmployeeId || !node.id) return;
-
-    setSaving(true);
-    setError(null);
+    if (!selectedEmployeeId) return;
+    setSaving(true); setError(null);
     try {
-      const payload = {
-        employee_id: selectedEmployeeId,
-        position_id: node.id,
+      await apiClient.employee.assignPosition(selectedEmployeeId, {
+        employee_id: selectedEmployeeId, position_id: node.id,
         start_date: new Date().toISOString(),
-      };
-      await apiClient.employee.assignPosition(selectedEmployeeId, payload);
+      });
       setSelectedEmployeeId("");
       await loadPositionDetails();
       onPositionUpdated?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to assign employee");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to assign employee"); }
+    finally { setSaving(false); }
   };
 
   const handleRemoveEmployee = async (employeeId: string) => {
-    if (!confirm("Remove this employee from the position?")) return;
-
-    setSaving(true);
-    setError(null);
+    setSaving(true); setError(null);
     try {
-      // Get the employee position detail to remove
       const positions = await apiClient.employee.getPositionHistory(employeeId);
       const empPos = positions.find((p) => p.is_current && p.position.id === node.id);
       if (empPos) {
@@ -103,248 +111,244 @@ export default function PositionNode({ node, level = 0, onPositionUpdated }: Pos
         await loadPositionDetails();
         onPositionUpdated?.();
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove employee");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to remove employee"); }
+    finally { setSaving(false); }
   };
 
   const handleUpdateBand = async () => {
-    if (!positionDetails || !node.id) return;
-
-    setSaving(true);
-    setError(null);
+    if (!positionDetails) return;
+    setSaving(true); setError(null);
     try {
-      await apiClient.position.update(node.id, {
-        ...positionDetails,
-        band: newBand || undefined,
-      });
-      setPositionDetails((current) => current ? { ...current, band: newBand || undefined } : null);
+      await apiClient.position.update(node.id, { ...positionDetails, band: newBand || undefined });
+      setPositionDetails((c) => c ? { ...c, band: newBand || undefined } : null);
       onPositionUpdated?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update band");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to update band"); }
+    finally { setSaving(false); }
   };
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen(true);
-  };
+  const STEM = 20;
+  const DROP = 20;
 
   return (
-    <div className="group flex flex-col items-center">
-      <div className="relative w-[190px] sm:w-[210px]">
-        <div className="absolute left-1/2 top-[-32px] h-8 w-px -translate-x-1/2 bg-slate-500/60" />
-        <div
-          className={cn(
-            "relative rounded border p-3 text-center shadow-sm transition-all duration-150 cursor-pointer",
-            isVacant
-              ? "border-sky-500 bg-white hover:bg-sky-50"
-              : "border-sky-700 bg-sky-500 hover:bg-sky-600",
-            open ? "ring-2 ring-offset-2 ring-slate-300" : ""
-          )}
-          onClick={handleCardClick}
-        >
-          {/* Expand/Collapse Button */}
-          {node.children && node.children.length > 0 && (
-            <button
-              className="absolute -left-6 top-1/2 -translate-y-1/2 rounded bg-white p-1 shadow hover:bg-muted"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded((s) => !s);
-              }}
-            >
-              {expanded ? (
-                <ChevronDown size={16} className="text-muted-foreground" />
-              ) : (
-                <ChevronRight size={16} className="text-muted-foreground" />
-              )}
-            </button>
-          )}
+    <div className="flex flex-col items-center">
+      {/* ── Position Card */}
+      <div
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        className={cn(
+          "group relative w-44 cursor-pointer rounded-2xl border-2 px-3 py-3 text-center shadow-sm transition-all duration-200 hover:scale-[1.03] hover:shadow-md",
+          isVacant
+            ? "border-rose-300 bg-white dark:bg-slate-800 dark:border-rose-700 hover:border-rose-400"
+            : "border-sky-400 bg-sky-500 hover:bg-sky-500/90 dark:bg-sky-600 dark:border-sky-500",
+          open ? "ring-2 ring-offset-2 ring-sky-400 dark:ring-offset-slate-900" : ""
+        )}
+      >
+        {isVacant && (
+          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-rose-100 dark:bg-rose-900/60 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-300">
+            <AlertCircle size={9} /> Vacant
+          </span>
+        )}
 
-          {/* Position Content */}
-          <div className="space-y-1 text-[11px] leading-tight">
-            {/* Title and Status */}
-            <div className="space-y-0.5">
-              <div>
-                <h4
-                  className={cn(
-                    "font-semibold",
-                    isVacant ? "text-slate-900" : "text-white"
-                  )}
-                >
-                  {node.title}
-                </h4>
-                {isVacant && (
-                  <p className="mt-0.5 flex items-center justify-center gap-1 text-[11px] font-semibold text-red-600">
-                    <AlertCircle size={12} />
-                    Vacant
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Employee Info */}
-            {(assignedEmployees.length > 0 || node.employee) && (
-              <div className={cn("flex items-center justify-center gap-1.5", isVacant ? "text-slate-700" : "text-white")}>
-                <User size={12} className={isVacant ? "text-slate-500" : "text-white/90"} />
-                <span className="font-medium">
-                  {assignedEmployees.length > 1
-                    ? `${assignedEmployees.length} employees`
-                    : assignedEmployees.length === 1
-                      ? assignedEmployees[0].full_name
-                      : node.employee?.full_name}
-                </span>
-              </div>
+        {hasChildren && (
+          <button
+            className={cn(
+              "absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800 transition-colors",
+              isVacant ? "border-rose-300 text-rose-500" : "border-sky-400 text-sky-600"
             )}
+            onClick={(e) => { e.stopPropagation(); setExpanded((s) => !s); }}
+          >
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+        )}
 
-            {/* Level and Band */}
-            <div className={cn("space-y-0.5", isVacant ? "text-slate-800" : "text-white")}>
-              <div className="font-medium">{node.level}</div>
-              {node.band && (
-                <div className="font-medium">{node.band}</div>
-              )}
+        <div className="space-y-1.5">
+          <p className={cn("text-[12px] font-bold leading-tight", isVacant ? "text-slate-800 dark:text-slate-100" : "text-white")}>
+            {node.title}
+          </p>
+          {employeeName && (
+            <div className={cn("flex items-center justify-center gap-1", isVacant ? "text-slate-600 dark:text-slate-300" : "text-sky-100")}>
+              <UserCheck size={11} />
+              <span className="text-[11px] font-medium truncate max-w-[110px]">{employeeName}</span>
             </div>
+          )}
+          <div className="space-y-0.5">
+            <p className={cn("text-[10px] font-medium", isVacant ? "text-slate-500 dark:text-slate-400" : "text-sky-100")}>
+              {node.level}
+            </p>
+            {node.band && (
+              <p className={cn("text-[10px]", isVacant ? "text-slate-400" : "text-sky-100/80")}>
+                {node.band}
+              </p>
+            )}
+            {departmentName && (
+              <p className={cn(
+                "text-[10px] font-medium truncate rounded px-1 py-0.5 mt-0.5",
+                isVacant
+                  ? "bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"
+                  : "bg-white/20 text-white/90"
+              )}>
+                {departmentName}
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Connection Line for Children */}
-      {expanded && node.children && node.children.length > 0 && (
-        <div className="relative mt-6 flex justify-center">
-          <div className="absolute left-1/2 top-0 h-8 w-px -translate-x-1/2 bg-slate-500/60" />
-          <div className="absolute left-0 right-0 top-8 h-px bg-slate-500/60" />
-          <div className="relative z-10 flex items-start justify-center gap-10 pt-8">
-            {node.children.map((child) => (
-              <PositionNode key={child.id} node={child} level={level + 1} onPositionUpdated={onPositionUpdated} />
+      {/* ── Child connector + children */}
+      {expanded && hasChildren && (
+        <div className="relative mt-3 flex flex-col items-center">
+          {/* Stem from parent card down to horizontal bar */}
+          <div className="w-px border-l-2 border-dashed border-slate-300 dark:border-slate-600" style={{ height: STEM }} />
+
+          {/* SVG connector — drawn using real measured card centers */}
+          {childCenters.length > 1 && childRowWidth > 0 && (
+            <svg
+              className="absolute pointer-events-none overflow-visible"
+              style={{ top: STEM, left: 0 }}
+              width={childRowWidth}
+              height={DROP}
+            >
+              {/* Horizontal bar from first to last child center */}
+              <line
+                x1={childCenters[0]}
+                y1={0}
+                x2={childCenters[childCenters.length - 1]}
+                y2={0}
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                className="text-slate-300 dark:text-slate-600"
+              />
+              {/* Vertical drop to each child */}
+              {childCenters.map((cx, i) => (
+                <line
+                  key={i}
+                  x1={cx} y1={0}
+                  x2={cx} y2={DROP}
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  className="text-slate-300 dark:text-slate-600"
+                />
+              ))}
+            </svg>
+          )}
+
+          {/* Single child — just a straight stem */}
+          {childCount === 1 && (
+            <div
+              className="w-px border-l-2 border-dashed border-slate-300 dark:border-slate-600"
+              style={{ height: DROP }}
+            />
+          )}
+
+          {/* Children row — each top-level card gets a ref for center measurement */}
+          <div
+            ref={childRowRef}
+            className="flex flex-wrap justify-center gap-4"
+            style={{ paddingTop: childCount > 1 ? DROP : 0 }}
+          >
+            {node.children!.map((child, i) => (
+              <div
+                key={child.id}
+                ref={(el) => { childCardRefs.current[i] = el; }}
+                className="flex flex-col items-center"
+              >
+                <PositionNode
+                  node={child}
+                  level={level + 1}
+                  onPositionUpdated={onPositionUpdated}
+                  departmentMap={departmentMap}
+                />
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Position Management Modal */}
+      {/* ── Modal */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-4 sm:p-6 dark:border-slate-800 dark:bg-slate-900">
-            {/* Header */}
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
-                  {node.title} - Manage Assignments
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {node.level} {node.band && `• Band: ${node.band}`}
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className={cn(
+              "flex items-start justify-between gap-3 rounded-t-2xl px-6 py-4 border-b border-slate-100 dark:border-slate-800",
+              isVacant ? "bg-rose-50 dark:bg-rose-950/30" : "bg-sky-50 dark:bg-sky-950/30"
+            )}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  {isVacant ? <AlertCircle size={16} className="text-rose-500" /> : <UserCheck size={16} className="text-sky-500" />}
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">{node.title}</h2>
+                  {isVacant && <span className="rounded-full bg-rose-100 dark:bg-rose-900/50 px-2 py-0.5 text-xs font-semibold text-rose-600 dark:text-rose-300">Vacant</span>}
+                </div>
+                <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{node.level}{node.band ? ` • Band: ${node.band}` : ""}{departmentName ? ` • ${departmentName}` : ""}</p>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                className="flex-shrink-0 rounded-md p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                <X className="h-5 w-5" />
+              <button onClick={() => setOpen(false)} className="flex-shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
               </button>
             </div>
 
-            {error && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-                {error}
-              </div>
-            )}
+            <div className="px-6 py-5 max-h-[70vh] overflow-y-auto space-y-5">
+              {error && <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
 
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin" />
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-                {/* Update Band */}
-                <div className="space-y-3 border-b border-slate-200 pb-4 dark:border-slate-800">
-                  <label className="space-y-1 text-sm">
-                    <span className="text-slate-600 dark:text-slate-300">Band</span>
+              {loading ? (
+                <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Band</label>
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newBand}
-                        onChange={(e) => setNewBand(e.target.value)}
-                        className="flex-1 rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm outline-none focus:border-slate-400 dark:border-slate-700"
-                        placeholder="e.g., A1, B2"
-                      />
-                      <button
-                        onClick={handleUpdateBand}
-                        disabled={saving || newBand === (node.band || "")}
-                        className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-                      >
+                      <input type="text" value={newBand} onChange={(e) => setNewBand(e.target.value)}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-sky-400 dark:text-slate-100"
+                        placeholder="e.g., A1, B2" />
+                      <button onClick={handleUpdateBand} disabled={saving || newBand === (node.band || "")}
+                        className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update"}
                       </button>
                     </div>
-                  </label>
-                </div>
+                  </div>
 
-                {/* Assigned Employees */}
-                <div className="space-y-3">
-                  <h3 className="font-medium text-slate-900 dark:text-slate-100">
-                    Assigned Employees ({assignedEmployees.length})
-                  </h3>
-                  {assignedEmployees.length > 0 ? (
-                    <div className="space-y-2">
-                      {assignedEmployees.map((emp) => (
-                        <div
-                          key={emp.id}
-                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">{emp.email}</p>
+                  <hr className="border-slate-100 dark:border-slate-800" />
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Assigned Employees ({assignedEmployees.length})</h3>
+                    {assignedEmployees.length > 0 ? (
+                      <div className="space-y-2">
+                        {assignedEmployees.map((emp) => (
+                          <div key={emp.id} className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-900 dark:text-slate-100 text-sm">{emp.full_name}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{emp.email}</p>
+                            </div>
+                            <button onClick={() => handleRemoveEmployee(emp.id)} disabled={saving}
+                              className="ml-3 flex-shrink-0 rounded-lg border border-red-200 dark:border-red-800 p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50">
+                              <Trash2 size={14} />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => handleRemoveEmployee(emp.id)}
-                            disabled={saving}
-                            className="flex-shrink-0 ml-2 rounded-md border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">No employees assigned yet.</p>
-                  )}
-                </div>
-
-                {/* Add Employee */}
-                <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-                  <h3 className="font-medium text-slate-900 dark:text-slate-100">Add Employee</h3>
-                  {availableEmployees.length > 0 ? (
-                    <div className="flex gap-2">
-                      <select
-                        value={selectedEmployeeId}
-                        onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                        className="flex-1 rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm outline-none focus:border-slate-400 dark:border-slate-700"
-                      >
-                        <option value="">Select an employee</option>
-                        {availableEmployees.map((emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.full_name}
-                          </option>
                         ))}
-                      </select>
-                      <button
-                        onClick={handleAddEmployee}
-                        disabled={!selectedEmployeeId || saving}
-                        className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-60 dark:bg-emerald-700 dark:hover:bg-emerald-800"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">All active employees are already assigned to positions.</p>
-                  )}
-                </div>
-              </div>
-            )}
+                      </div>
+                    ) : <p className="text-sm text-slate-400 dark:text-slate-500">No employees assigned yet.</p>}
+                  </div>
+
+                  <hr className="border-slate-100 dark:border-slate-800" />
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Add Employee</h3>
+                    {availableEmployees.length > 0 ? (
+                      <div className="flex gap-2">
+                        <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                          className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-sky-400 dark:text-slate-100">
+                          <option value="">Select an employee</option>
+                          {availableEmployees.map((emp) => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+                        </select>
+                        <button onClick={handleAddEmployee} disabled={!selectedEmployeeId || saving}
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50">
+                          <Plus size={15} /> Add
+                        </button>
+                      </div>
+                    ) : <p className="text-sm text-slate-400 dark:text-slate-500">All employees are already assigned.</p>}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

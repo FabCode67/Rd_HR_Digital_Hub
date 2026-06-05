@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { Department } from "@/lib/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, Network } from "lucide-react";
 import DepartmentNode from "./DepartmentNode";
 
 interface DepartmentTreeProps {
@@ -17,7 +17,6 @@ export default function DepartmentTree({ rootDepartments }: DepartmentTreeProps)
 
   useEffect(() => {
     let mounted = true;
-
     async function loadRoots() {
       setLoading(true);
       setError(null);
@@ -27,85 +26,84 @@ export default function DepartmentTree({ rootDepartments }: DepartmentTreeProps)
         setRoots(data || []);
       } catch (err) {
         if (!mounted) return;
-        console.error(err);
         setError(err instanceof Error ? err.message : "Failed to load departments");
       } finally {
         if (mounted) setLoading(false);
       }
     }
-
     loadRoots();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [rootDepartments]);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground">Organization Structure</h2>
-        <p className="text-sm text-muted-foreground mt-1">View the hierarchical structure of all departments and positions</p>
+    <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40">
+          <Network className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Organization Structure
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Hierarchical view of all departments, positions, and staff
+          </p>
+        </div>
       </div>
 
-      <div className="bg-card border rounded-lg">
-        <div className="p-6 space-y-4">
-          {/* Loading State */}
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-4 py-3 text-xs">
+        <span className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+          <span className="h-3 w-3 rounded-sm bg-violet-500" />
+          Department
+        </span>
+        <span className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+          <span className="h-3 w-3 rounded-sm bg-sky-500" />
+          Filled Position
+        </span>
+        <span className="flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+          <span className="h-3 w-3 rounded-sm border-2 border-rose-400 bg-white dark:bg-slate-800" />
+          Vacant Position
+        </span>
+        <span className="flex items-center gap-2 font-medium text-slate-500 dark:text-slate-400">
+          <span className="h-px w-5 border-t-2 border-dashed border-slate-400" />
+          Reporting Line
+        </span>
+      </div>
+
+      {/* Tree canvas */}
+      <div className="overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+        <div className="min-h-[300px] p-6">
           {loading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="animate-spin text-muted-foreground mr-2" size={20} />
-              <span className="text-sm text-muted-foreground">Loading organizational structure…</span>
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="animate-spin text-violet-500 mr-2" size={22} />
+              <span className="text-sm text-slate-500">Loading organizational structure…</span>
             </div>
           )}
 
-          {/* Error State */}
           {error && (
-            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-              <p className="text-sm text-destructive font-medium">Error loading organization structure</p>
-              <p className="text-xs text-destructive/70 mt-1">{error}</p>
+            <div className="mx-auto max-w-md rounded-xl border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 p-5 text-center">
+              <p className="font-medium text-red-700 dark:text-red-300">Failed to load structure</p>
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400">{error}</p>
             </div>
           )}
 
-          {/* Empty State */}
           {!loading && !error && (!roots || roots.length === 0) && (
-            <div className="text-center py-8">
-              <p className="text-sm text-muted-foreground">No departments found.</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Network className="h-12 w-12 text-slate-300 dark:text-slate-600 mb-3" />
+              <p className="font-medium text-slate-500 dark:text-slate-400">No departments found</p>
+              <p className="mt-1 text-xs text-slate-400">Add departments to see the organization tree here</p>
             </div>
           )}
 
-          {/* Department Tree */}
           {roots && roots.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {roots.map((dept) => (
                 <DepartmentNode key={dept.id} department={dept} />
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-        <div className="flex items-start gap-2">
-          <div className="mt-1 text-lg flex-shrink-0">📁</div>
-          <div>
-            <p className="font-medium text-foreground">Department</p>
-            <p className="text-xs text-muted-foreground">Organizational unit</p>
-          </div>
-        </div>
-        <div className="flex items-start gap-2">
-          <div className="mt-1 w-3 h-3 rounded bg-blue-400 flex-shrink-0" />
-          <div>
-            <p className="font-medium text-foreground">Filled Position</p>
-            <p className="text-xs text-muted-foreground">Position with assigned employee</p>
-          </div>
-        </div>
-        <div className="flex items-start gap-2">
-          <div className="mt-1 w-3 h-3 rounded border-2 border-red-400 flex-shrink-0" />
-          <div>
-            <p className="font-medium text-foreground">Vacant Position</p>
-            <p className="text-xs text-muted-foreground">Position open for recruitment</p>
-          </div>
         </div>
       </div>
     </div>

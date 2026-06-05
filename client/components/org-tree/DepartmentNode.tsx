@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Department } from "@/lib/types";
-import { ChevronDown, ChevronRight, Building2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Building2, Loader2 } from "lucide-react";
 import PositionTree from "./PositionTree";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,19 @@ interface DepartmentNodeProps {
   level?: number;
 }
 
+/** Recursively collect { id -> name } from a nested dept tree response */
+function collectDeptMap(node: any, acc: Record<string, string> = {}): Record<string, string> {
+  if (node?.id && node?.name) acc[node.id] = node.name;
+  for (const child of node?.children ?? []) collectDeptMap(child, acc);
+  return acc;
+}
+
 export default function DepartmentNode({ department, level = 0 }: DepartmentNodeProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(level === 0); // auto-expand top-level
   const [childDepts, setChildDepts] = useState<Department[] | null>(null);
   const [positions, setPositions] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [departmentMap, setDepartmentMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -27,27 +35,26 @@ export default function DepartmentNode({ department, level = 0 }: DepartmentNode
         if (!mounted) return;
         setChildDepts(tree.children || []);
         setPositions(tree.positions || []);
+        setDepartmentMap(collectDeptMap(tree));
       } catch (err) {
         console.error(err);
       } finally {
         if (mounted) setLoading(false);
       }
     }
-    if (expanded && (!childDepts || !positions)) {
+    if (expanded && childDepts === null && positions === null) {
       load();
     }
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [expanded, department.id, childDepts, positions]);
 
   const handlePositionUpdated = async () => {
-    // Reload the hierarchy when a position is updated
     setLoading(true);
     try {
       const tree = await apiClient.department.getHierarchy(department.id);
       setChildDepts(tree.children || []);
       setPositions(tree.positions || []);
+      setDepartmentMap(collectDeptMap(tree));
     } catch (err) {
       console.error(err);
     } finally {
@@ -55,71 +62,123 @@ export default function DepartmentNode({ department, level = 0 }: DepartmentNode
     }
   };
 
-  const hasContent = (childDepts && childDepts.length > 0) || (positions && positions.length > 0);
+  const hasContent =
+    (childDepts && childDepts.length > 0) || (positions && positions.length > 0);
+
+  const totalPositions = positions?.length ?? 0;
+  const vacantCount = positions?.filter((p: any) => p.is_vacant).length ?? 0;
 
   return (
-    <div className="group">
-      {/* Department Header */}
+    <div>
+      {/* ── Department Header Card ───────────────────────────────────────── */}
       <div
-        className={cn(
-          "flex items-start gap-2 py-2 px-3 rounded-lg border-2 cursor-pointer transition-all",
-          expanded
-            ? "border-purple-400 bg-purple-50 dark:bg-purple-950/20"
-            : "border-purple-300 bg-purple-50/50 dark:bg-purple-950/10 hover:border-purple-400"
-        )}
+        role="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((s) => !s)}
+        className={cn(
+          "group flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer select-none transition-all duration-200",
+          expanded
+            ? "border-violet-400 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/40 dark:to-purple-950/30 shadow-sm shadow-violet-100 dark:shadow-none dark:border-violet-700"
+            : "border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800/60 hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/60 dark:hover:bg-violet-950/20"
+        )}
       >
-        {/* Expand/Collapse Chevron */}
-        <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+        {/* Chevron */}
+        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/50 transition-colors">
           {hasContent ? (
             expanded ? (
-              <ChevronDown size={16} className="text-purple-600 dark:text-purple-400" />
+              <ChevronDown size={15} className="text-violet-600 dark:text-violet-400" />
             ) : (
-              <ChevronRight size={16} className="text-purple-600 dark:text-purple-400" />
+              <ChevronRight size={15} className="text-violet-600 dark:text-violet-400" />
             )
-          ) : null}
+          ) : (
+            <Building2 size={15} className="text-violet-400" />
+          )}
         </div>
 
-        {/* Department Icon and Content */}
+        {/* Dept icon */}
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-violet-500 shadow-sm">
+          <Building2 size={18} className="text-white" />
+        </div>
+
+        {/* Name + meta */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Building2 className="text-purple-600 dark:text-purple-400 flex-shrink-0" size={18} />
-            <h3 className="font-semibold text-purple-900 dark:text-purple-100 truncate">{department.name}</h3>
-            {!hasContent && (
-              <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">No positions</span>
-            )}
+            <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+              {department.name}
+            </span>
+            {loading && <Loader2 size={12} className="animate-spin text-violet-400" />}
           </div>
           {department.description && (
-            <p className="text-xs text-purple-700 dark:text-purple-300 mt-1 ml-6">{department.description}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+              {department.description}
+            </p>
+          )}
+        </div>
+
+        {/* Badges */}
+        <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
+          {totalPositions > 0 && (
+            <span className="rounded-full bg-violet-100 dark:bg-violet-900/50 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+              {totalPositions} position{totalPositions !== 1 ? "s" : ""}
+            </span>
+          )}
+          {vacantCount > 0 && (
+            <span className="rounded-full bg-rose-100 dark:bg-rose-900/40 px-2.5 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-300">
+              {vacantCount} vacant
+            </span>
           )}
         </div>
       </div>
 
-      {/* Expanded Content */}
+      {/* ── Expanded Content with connector lines ───────────────────────── */}
       {expanded && (
-        <div className="ml-4 mt-3 space-y-3 border-l-2 border-purple-300 dark:border-purple-700 pl-4">
-          {loading && (
-            <div className="text-sm text-muted-foreground py-2">Loading department structure…</div>
-          )}
-
-          {/* Positions */}
+        <div className="ml-6 mt-1 pl-5 border-l-2 border-dashed border-violet-200 dark:border-violet-800">
+          {/* Positions section */}
           {positions && positions.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Positions</p>
-              <PositionTree positions={positions} level={level + 1} onPositionUpdated={handlePositionUpdated} />
+            <div className="pt-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  Positions
+                </span>
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+              </div>
+              <PositionTree
+                positions={positions}
+                level={level + 1}
+                onPositionUpdated={handlePositionUpdated}
+                departmentMap={departmentMap}
+              />
             </div>
           )}
 
-          {/* Child Departments */}
+          {/* Child departments */}
           {childDepts && childDepts.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Departments</p>
-              <div className="space-y-2">
-                {childDepts.map((c) => (
-                  <DepartmentNode key={c.id} department={c} level={level + 1} />
-                ))}
+            <div className="pt-4 space-y-2">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  Sub-departments
+                </span>
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
               </div>
+              {childDepts.map((c) => (
+                <DepartmentNode key={c.id} department={c} level={level + 1} />
+              ))}
             </div>
+          )}
+
+          {/* Loading indicator */}
+          {loading && (
+            <div className="flex items-center gap-2 py-4 pl-1 text-sm text-slate-500">
+              <Loader2 size={14} className="animate-spin" />
+              Loading…
+            </div>
+          )}
+
+          {/* Empty */}
+          {!loading && hasContent === false && (
+            <p className="py-4 pl-1 text-sm text-slate-400 dark:text-slate-500">No positions or sub-departments.</p>
           )}
         </div>
       )}

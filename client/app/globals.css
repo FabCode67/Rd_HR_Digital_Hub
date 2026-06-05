@@ -127,6 +127,42 @@
   html {
     @apply font-sans;
     }
+
+  /* ── Form element dark mode — fixes invisible text in select/input/textarea */
+  input,
+  textarea {
+    color: inherit;
+    background-color: transparent;
+  }
+
+  /* Select needs an explicit bg because the native dropdown ignores bg-transparent */
+  select {
+    color: inherit;
+    background-color: white;
+  }
+
+  .dark select {
+    background-color: rgb(30 41 59); /* slate-800 */
+    color: rgb(241 245 249);         /* slate-100 */
+    color-scheme: dark;
+  }
+
+  /* Option elements inside selects also need explicit colors in dark mode */
+  .dark select option {
+    background-color: rgb(30 41 59);
+    color: rgb(241 245 249);
+  }
+
+  /* Placeholder text */
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(148 163 184); /* slate-400 */
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: rgb(100 116 139); /* slate-500 */
+  }
 }
 
 @keyframes riseIn {
