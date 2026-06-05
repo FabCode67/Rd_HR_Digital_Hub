@@ -180,7 +180,7 @@ export default function PositionManagement() {
                   <input
                     value={form.title}
                     onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="Position title"
                     required
                   />
@@ -191,7 +191,7 @@ export default function PositionManagement() {
                   <select
                     value={form.department_id}
                     onChange={(event) => setForm((current) => ({ ...current, department_id: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     required
                   >
                     <option value="">Select department</option>
@@ -210,13 +210,11 @@ export default function PositionManagement() {
                   <select
                     value={form.level}
                     onChange={(event) => setForm((current) => ({ ...current, level: event.target.value as PositionLevel }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     required
                   >
                     {POSITION_LEVELS.map((level) => (
-                      <option key={level} value={level}>
-                        {level}
-                      </option>
+                      <option key={level} value={level}>{level}</option>
                     ))}
                   </select>
                 </label>
@@ -226,7 +224,7 @@ export default function PositionManagement() {
                   <select
                     value={form.parent_position_id}
                     onChange={(event) => setForm((current) => ({ ...current, parent_position_id: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   >
                     <option value="">No parent</option>
                     {positions
@@ -246,7 +244,7 @@ export default function PositionManagement() {
                   <input
                     value={form.band}
                     onChange={(event) => setForm((current) => ({ ...current, band: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="e.g., A1, B2"
                   />
                 </label>
@@ -266,7 +264,7 @@ export default function PositionManagement() {
                 <textarea
                   value={form.description}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                  className="min-h-20 w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                  className="field min-h-20"
                   placeholder="Short description"
                 />
               </label>

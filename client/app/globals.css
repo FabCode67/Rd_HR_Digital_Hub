@@ -163,6 +163,46 @@
   .dark textarea::placeholder {
     color: rgb(100 116 139); /* slate-500 */
   }
+
+  /* Reusable form field class — use as .field on input/select/textarea */
+  .field {
+    width: 100%;
+    border-radius: 0.375rem;
+    border-width: 1px;
+    border-color: rgb(226 232 240); /* slate-200 */
+    background-color: transparent;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: rgb(15 23 42);           /* slate-900 */
+    outline: none;
+  }
+  .field::placeholder { color: rgb(148 163 184); }
+  .field:focus { border-color: rgb(100 116 139); } /* slate-500 */
+
+  .dark .field {
+    border-color: rgb(51 65 85);    /* slate-700 */
+    color: rgb(241 245 249);        /* slate-100 */
+  }
+  .dark .field::placeholder { color: rgb(100 116 139); }
+  .dark .field:focus { border-color: rgb(148 163 184); }
+
+  /* Date/time inputs — calendar picker needs color-scheme hint */
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="month"],
+  input[type="week"] {
+    color-scheme: light;
+  }
+
+  .dark input[type="date"],
+  .dark input[type="datetime-local"],
+  .dark input[type="time"],
+  .dark input[type="month"],
+  .dark input[type="week"] {
+    color-scheme: dark;
+    color: rgb(241 245 249);
+  }
 }
 
 @keyframes riseIn {

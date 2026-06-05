@@ -106,16 +106,16 @@ export default function Page() {
                     <button
                       onClick={() => {
                         setMenuOpen(false)
-                        router.push('/forms')
+                        router.push('/dashboard/my-forms')
                       }}
                       className="block w-full px-4 py-2 text-left text-sm text-slate-900"
                     >
-                      Forms
+                      My Forms
                     </button>
                     <button
                       onClick={() => {
                         setMenuOpen(false)
-                        router.push('/profile')
+                        router.push('/dashboard/profile')
                       }}
                       className="block w-full px-4 py-2 text-left text-sm text-slate-900"
                     >

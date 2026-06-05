@@ -1,5 +1,5 @@
-import RequiredFormsHub from "@/components/forms/RequiredFormsHub";
+import { redirect } from "next/navigation";
 
-export default function FormsPage() {
-  return <RequiredFormsHub />;
+export default function FormsRedirect() {
+  redirect("/dashboard/my-forms");
 }

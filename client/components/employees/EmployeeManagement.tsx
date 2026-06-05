@@ -346,7 +346,7 @@ export default function EmployeeManagement() {
                   <input
                     value={form.full_name}
                     onChange={(event) => setForm((current) => ({ ...current, full_name: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="Full name"
                     required
                   />
@@ -358,7 +358,7 @@ export default function EmployeeManagement() {
                     type="email"
                     value={form.email}
                     onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="email@example.com"
                     required
                   />
@@ -371,7 +371,7 @@ export default function EmployeeManagement() {
                   <input
                     value={form.phone}
                     onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="+250 7xx xxx xxx"
                   />
                 </label>
@@ -381,7 +381,7 @@ export default function EmployeeManagement() {
                   <select
                     value={form.status}
                     onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as EmployeeStatus }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   >
                     {EMPLOYEE_STATUSES.map((status) => (
                       <option key={status} value={status}>
@@ -399,7 +399,7 @@ export default function EmployeeManagement() {
                     type="date"
                     value={form.date_of_birth}
                     onChange={(event) => setForm((current) => ({ ...current, date_of_birth: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   />
                 </label>
 
@@ -408,7 +408,7 @@ export default function EmployeeManagement() {
                   <input
                     value={form.national_id}
                     onChange={(event) => setForm((current) => ({ ...current, national_id: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="ID number"
                   />
                 </label>
@@ -426,7 +426,7 @@ export default function EmployeeManagement() {
                           setPositionAssignment((current) => ({ ...current, departmentId: event.target.value }));
                           void loadPositionsForFormDepartment(event.target.value);
                         }}
-                        className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                        className="field"
                       >
                         <option value="">Select department</option>
                         {departments.map((department) => (
@@ -442,7 +442,7 @@ export default function EmployeeManagement() {
                       <select
                         value={positionAssignment.positionId}
                         onChange={(event) => setPositionAssignment((current) => ({ ...current, positionId: event.target.value }))}
-                        className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                        className="field"
                         disabled={!positionAssignment.departmentId}
                       >
                         <option value="">
@@ -460,10 +460,10 @@ export default function EmployeeManagement() {
                   <label className="space-y-1 text-sm">
                     <span className="text-slate-600 dark:text-slate-300">Start Date</span>
                     <input
-                      type="date"
-                      value={positionAssignment.startDate}
-                      onChange={(event) => setPositionAssignment((current) => ({ ...current, startDate: event.target.value }))}
-                      className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    type="date"
+                    value={positionAssignment.startDate}
+                    onChange={(event) => setPositionAssignment((current) => ({ ...current, startDate: event.target.value }))}
+                    className="field"
                     />
                   </label>
                 </div>
@@ -650,7 +650,7 @@ export default function EmployeeManagement() {
                   <select
                     value={assignmentDepartmentId}
                     onChange={(event) => void handleDepartmentChange(event.target.value)}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   >
                     <option value="">Select department</option>
                     {departments.map((department) => (
@@ -666,7 +666,7 @@ export default function EmployeeManagement() {
                   <select
                     value={assignmentPositionId}
                     onChange={(event) => setAssignmentPositionId(event.target.value)}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     disabled={!assignmentDepartmentId}
                   >
                     <option value="">
@@ -686,7 +686,7 @@ export default function EmployeeManagement() {
                     type="date"
                     value={assignmentStartDate}
                     onChange={(event) => setAssignmentStartDate(event.target.value)}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   />
                 </label>
 

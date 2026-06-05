@@ -150,7 +150,7 @@ export default function DepartmentManagement() {
                   <input
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                     placeholder="Department name"
                     required
                   />
@@ -161,7 +161,7 @@ export default function DepartmentManagement() {
                   <select
                     value={form.parent_id}
                     onChange={(event) => setForm((current) => ({ ...current, parent_id: event.target.value }))}
-                    className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                    className="field"
                   >
                     <option value="">Root department</option>
                     {departments
@@ -180,7 +180,7 @@ export default function DepartmentManagement() {
                 <textarea
                   value={form.description}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                  className="min-h-20 w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 outline-none focus:border-slate-400 dark:border-slate-700"
+                  className="field min-h-20"
                   placeholder="Short description"
                 />
               </label>

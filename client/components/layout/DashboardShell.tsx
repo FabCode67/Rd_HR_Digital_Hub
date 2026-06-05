@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import {
   ChevronLeft,
   ChevronRight,
@@ -18,6 +19,8 @@ import {
   CircleUserRound,
   Settings,
   LogOut,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,15 +30,16 @@ type DashboardShellProps = {
 };
 
 const baseNavItems = [
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/org", label: "Organization", icon: Network },
-  { href: "/dashboard", label: "Departments", icon: Building2 },
+  { href: "/dashboard/org", label: "Organization", icon: Network },
+  { href: "/dashboard/departments", label: "Departments", icon: Building2 },
   { href: "/dashboard/positions", label: "Positions", icon: LayoutDashboard },
   { href: "/dashboard/employees", label: "Employees", icon: Users },
-  { href: "/dashboard/forms", label: "Forms", icon: ListChecks },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/my-forms", label: "My Forms", icon: ListChecks },
 ];
 
 const adminNavItems = [
+  { href: "/dashboard/forms", label: "Forms", icon: ListChecks },
   { href: "/dashboard/staff", label: "Staff Management", icon: Users },
 ];
 
@@ -46,6 +50,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const sidebarWidthClass = collapsed ? "md:pl-16" : "md:pl-60";
 
   // Combine nav items based on user role
@@ -209,7 +215,19 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               </div>
             </div>
 
-            <div className="relative">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+              >
+                {isDark
+                  ? <Sun className="h-4 w-4" />
+                  : <Moon className="h-4 w-4" />}
+              </button>
+
+              <div className="relative">
               <button
                 type="button"
                 onClick={() => setProfileOpen((value) => !value)}
@@ -238,7 +256,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                       </div>
                     </>
                   )}
-                  <Link href="/profile">
+                  <Link href="/dashboard/profile">
                     <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
                       <CircleUserRound className="h-4 w-4" />
                       View Profile
@@ -260,6 +278,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                   </button>
                 </div>
               )}
+              </div>
             </div>
           </header>
 

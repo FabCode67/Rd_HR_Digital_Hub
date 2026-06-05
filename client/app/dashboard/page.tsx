@@ -1,12 +1,5 @@
-import DepartmentManagement from "@/components/departments/DepartmentManagement";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Departments - Rwanda HR Digital Hub",
-  description: "Departments overview",
-};
-
-export default function DashboardPage() {
-  return (
-    <DepartmentManagement />
-  );
+export default function DashboardRootPage() {
+  redirect("/dashboard/departments");
 }
