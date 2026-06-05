@@ -64,9 +64,9 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:flex">
         {/* Logo */}
         <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
-          <div className="relative h-9 w-20 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
+          <Link href="/" className="relative h-9 w-20 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100 block">
             <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="80px" className="object-contain" priority />
-          </div>
+          </Link>
           <div>
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">NCBA HR</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400">Staff Portal</p>
@@ -114,9 +114,9 @@ export default function StaffShell({ children }: { children: React.ReactNode }) 
       )}>
         <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="relative h-9 w-20 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
+            <Link href="/" className="relative h-9 w-20 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100 block">
               <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="80px" className="object-contain" />
-            </div>
+            </Link>
             <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Staff Portal</span>
           </div>
           <button onClick={() => setMobileOpen(false)}

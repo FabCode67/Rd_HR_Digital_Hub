@@ -10,6 +10,8 @@ import {
 import DepartmentNode from "@/components/org-tree/DepartmentNode";
 import { cn } from "@/lib/utils";
 import { Loader2, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { useToast, ToastContainer } from "@/components/ui/Toast";
+import { DeleteModal } from "@/components/ui/DeleteModal";
 
 type FormState = {
   name: string;
@@ -33,6 +35,9 @@ export default function DepartmentManagement() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const toast = useToast();
 
   const rootDepartments = useMemo(
     () => departments.filter((department) => !department.parent_id),
@@ -86,39 +91,45 @@ export default function DepartmentManagement() {
     try {
       if (editingId) {
         await apiClient.department.update(editingId, payload);
+        toast.success("Department updated", `"${form.name}" has been updated.`);
       } else {
         await apiClient.department.create(payload as DepartmentCreateInput);
+        toast.success("Department created", `"${form.name}" has been added.`);
       }
 
       await loadDepartments();
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save department");
+      const msg = err instanceof Error ? err.message : "Failed to save department";
+      setError(msg);
+      toast.error("Save failed", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteDepartment = async (department: Department) => {
-    if (!confirm(`Delete ${department.name}?`)) return;
-
-    setSaving(true);
+  const deleteDepartment = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setError(null);
     try {
-      await apiClient.department.delete(department.id);
+      await apiClient.department.delete(deleteTarget.id);
+      toast.success("Department deleted", `"${deleteTarget.name}" has been removed.`);
       await loadDepartments();
-      if (editingId === department.id) {
-        resetForm();
-      }
+      if (editingId === deleteTarget.id) resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete department");
+      const msg = err instanceof Error ? err.message : "Failed to delete department";
+      setError(msg);
+      toast.error("Delete failed", msg);
     } finally {
-      setSaving(false);
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
   return (
     <section className="space-y-4 min-w-0">
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Departments</h1>
@@ -265,7 +276,7 @@ export default function DepartmentManagement() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void deleteDepartment(department)}
+                          onClick={() => setDeleteTarget(department)}
                           className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -321,7 +332,7 @@ export default function DepartmentManagement() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void deleteDepartment(department)}
+                                onClick={() => setDeleteTarget(department)}
                                 className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                               >
                                 <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -380,6 +391,15 @@ export default function DepartmentManagement() {
           )}
         </div>
       </div>
+
+      <DeleteModal
+        open={!!deleteTarget}
+        title="Delete Department"
+        itemName={deleteTarget?.name ?? ""}
+        loading={deleting}
+        onConfirm={() => void deleteDepartment()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }

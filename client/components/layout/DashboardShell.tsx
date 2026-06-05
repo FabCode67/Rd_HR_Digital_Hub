@@ -107,32 +107,19 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
           {!collapsed ? (
-            <div className="flex min-w-0 items-center gap-2.5">
+            <Link href="/" className="flex min-w-0 items-center gap-2.5">
               <div className="relative h-8 w-16 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
-                <Image
-                  src="/NCBA_LOGO_2.jpg"
-                  alt="NCBA"
-                  fill
-                  sizes="64px"
-                  className="object-contain"
-                  priority
-                />
+                <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="64px" className="object-contain" priority />
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">NCBA HR</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>
               </div>
-            </div>
+            </Link>
           ) : (
-            <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-white dark:bg-slate-100">
-              <Image
-                src="/NCBA_LOGO_2.jpg"
-                alt="NCBA"
-                fill
-                sizes="32px"
-                className="object-contain"
-              />
-            </div>
+            <Link href="/" className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-white dark:bg-slate-100 block">
+              <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="32px" className="object-contain" />
+            </Link>
           )}
 
           <button
@@ -166,15 +153,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="relative h-8 w-16 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
-              <Image
-                src="/NCBA_LOGO_2.jpg"
-                alt="NCBA"
-                fill
-                sizes="64px"
-                className="object-contain"
-              />
-            </div>
+            <Link href="/" className="relative h-8 w-16 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100 block">
+              <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="64px" className="object-contain" />
+            </Link>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">NCBA HR</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">Digital Hub</p>

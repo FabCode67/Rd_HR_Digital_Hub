@@ -47,15 +47,19 @@ export default function LoginPage() {
       <div className="relative w-full max-w-md">
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
           {/* Logo */}
-          <Link href="/" className="mb-8 flex justify-center">
-            <div className="relative h-12 w-24 overflow-hidden rounded-lg bg-white/90 p-1">
+          <Link href="/" className="mb-8 flex flex-col items-center gap-3">
+            <div className="relative h-14 w-36 overflow-hidden rounded-xl bg-white p-1.5 shadow-md">
               <Image
                 src="/NCBA_LOGO_2.jpg"
                 alt="NCBA"
                 fill
-                sizes="96px"
-                className="object-cover"
+                sizes="144px"
+                className="object-contain"
+                priority
               />
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">HR Digital Hub · Rwanda</p>
             </div>
           </Link>
 

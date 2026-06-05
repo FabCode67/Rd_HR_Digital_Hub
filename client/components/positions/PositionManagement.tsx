@@ -12,6 +12,8 @@ import {
 import PositionNode from "@/components/org-tree/PositionNode";
 import { cn } from "@/lib/utils";
 import { Loader2, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { useToast, ToastContainer } from "@/components/ui/Toast";
+import { DeleteModal } from "@/components/ui/DeleteModal";
 
 type FormState = {
   title: string;
@@ -53,6 +55,9 @@ export default function PositionManagement() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<Position | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const toast = useToast();
 
   const rootPositions = useMemo(
     () => positions.filter((position) => !position.parent_position_id),
@@ -116,39 +121,44 @@ export default function PositionManagement() {
     try {
       if (editingId) {
         await apiClient.position.update(editingId, payload);
+        toast.success("Position updated", `"${form.title}" has been updated.`);
       } else {
         await apiClient.position.create(payload as PositionCreateInput);
+        toast.success("Position created", `"${form.title}" has been added.`);
       }
-
       await loadData();
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save position");
+      const msg = err instanceof Error ? err.message : "Failed to save position";
+      setError(msg);
+      toast.error("Save failed", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const deletePosition = async (position: Position) => {
-    if (!confirm(`Delete ${position.title}?`)) return;
-
-    setSaving(true);
+  const deletePosition = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setError(null);
     try {
-      await apiClient.position.delete(position.id);
+      await apiClient.position.delete(deleteTarget.id);
+      toast.success("Position deleted", `"${deleteTarget.title}" has been removed.`);
       await loadData();
-      if (editingId === position.id) {
-        resetForm();
-      }
+      if (editingId === deleteTarget.id) resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete position");
+      const msg = err instanceof Error ? err.message : "Failed to delete position";
+      setError(msg);
+      toast.error("Delete failed", msg);
     } finally {
-      setSaving(false);
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
   return (
     <section className="space-y-4 min-w-0">
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Positions</h1>
@@ -341,7 +351,7 @@ export default function PositionManagement() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void deletePosition(position)}
+                          onClick={() => setDeleteTarget(position)}
                           className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -401,7 +411,7 @@ export default function PositionManagement() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void deletePosition(position)}
+                                onClick={() => setDeleteTarget(position)}
                                 className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                               >
                                 <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -464,6 +474,15 @@ export default function PositionManagement() {
           )}
         </div>
       </div>
+
+      <DeleteModal
+        open={!!deleteTarget}
+        title="Delete Position"
+        itemName={deleteTarget?.title ?? ""}
+        loading={deleting}
+        onConfirm={() => void deletePosition()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }

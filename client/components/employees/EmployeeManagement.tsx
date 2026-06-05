@@ -13,6 +13,8 @@ import {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Calendar, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useToast, ToastContainer } from "@/components/ui/Toast";
+import { DeleteModal } from "@/components/ui/DeleteModal";
 
 type FormState = {
   full_name: string;
@@ -72,6 +74,9 @@ export default function EmployeeManagement() {
   const [assignmentDepartmentId, setAssignmentDepartmentId] = useState("");
   const [assignmentPositionId, setAssignmentPositionId] = useState("");
   const [assignmentStartDate, setAssignmentStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const toast = useToast();
 
   const loadEmployees = async () => {
     setLoading(true);
@@ -176,34 +181,38 @@ export default function EmployeeManagement() {
           position_id: positionAssignment.positionId,
           start_date: toDateTimeString(positionAssignment.startDate),
         };
-
         await apiClient.employee.assignPosition(employeeId, positionPayload);
       }
 
       await loadEmployees();
+      toast.success(editingId ? "Employee updated" : "Employee created",
+        editingId ? `${form.full_name} has been updated.` : `${form.full_name} has been added.`);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save employee");
+      const msg = err instanceof Error ? err.message : "Failed to save employee";
+      setError(msg);
+      toast.error("Save failed", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteEmployee = async (employee: Employee) => {
-    if (!confirm(`Delete ${employee.full_name}?`)) return;
-
-    setSaving(true);
+  const deleteEmployee = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setError(null);
     try {
-      await apiClient.employee.delete(employee.id);
+      await apiClient.employee.delete(deleteTarget.id);
+      toast.success("Employee deleted", `${deleteTarget.full_name} has been removed.`);
       await loadEmployees();
-      if (editingId === employee.id) {
-        resetForm();
-      }
+      if (editingId === deleteTarget.id) resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete employee");
+      const msg = err instanceof Error ? err.message : "Failed to delete employee";
+      setError(msg);
+      toast.error("Delete failed", msg);
     } finally {
-      setSaving(false);
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -315,6 +324,7 @@ export default function EmployeeManagement() {
 
   return (
     <section className="min-w-0 space-y-4">
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Employees</h1>
@@ -543,7 +553,7 @@ export default function EmployeeManagement() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void deleteEmployee(employee)}
+                          onClick={() => setDeleteTarget(employee)}
                           className="w-full inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -601,7 +611,7 @@ export default function EmployeeManagement() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void deleteEmployee(employee)}
+                                onClick={() => setDeleteTarget(employee)}
                                 className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                               >
                                 <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -764,6 +774,16 @@ export default function EmployeeManagement() {
           </div>
         </div>
       )}
+
+      <DeleteModal
+        open={!!deleteTarget}
+        title="Delete Employee"
+        description="This will permanently remove the employee and all their records."
+        itemName={deleteTarget?.full_name ?? ""}
+        loading={deleting}
+        onConfirm={() => void deleteEmployee()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }
