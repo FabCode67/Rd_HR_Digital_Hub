@@ -17,7 +17,8 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     if (!isLoading && !isAuthenticated) {
       router.push("/login");
     } else if (requiredRole && user && user.role !== requiredRole) {
-      router.push("/");
+      // redirect to the right home for each role
+      router.push(user.role === "admin" ? "/dashboard" : "/staff");
     }
   }, [isLoading, isAuthenticated, user, requiredRole, router]);
 

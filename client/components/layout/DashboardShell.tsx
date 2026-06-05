@@ -30,17 +30,16 @@ type DashboardShellProps = {
 };
 
 const baseNavItems = [
-  { href: "/dashboard/org", label: "Organization", icon: Network },
-  { href: "/dashboard/departments", label: "Departments", icon: Building2 },
-  { href: "/dashboard/positions", label: "Positions", icon: LayoutDashboard },
-  { href: "/dashboard/employees", label: "Employees", icon: Users },
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/dashboard/my-forms", label: "My Forms", icon: ListChecks },
+  { href: "/dashboard/analytics",   label: "Analytics",    icon: BarChart3 },
+  { href: "/dashboard/org",          label: "Organization", icon: Network },
+  { href: "/dashboard/departments",  label: "Departments",  icon: Building2 },
+  { href: "/dashboard/positions",    label: "Positions",    icon: LayoutDashboard },
+  { href: "/dashboard/employees",    label: "Employees",    icon: Users },
 ];
 
 const adminNavItems = [
-  { href: "/dashboard/forms", label: "Forms", icon: ListChecks },
-  { href: "/dashboard/staff", label: "Staff Management", icon: Users },
+  { href: "/dashboard/forms",  label: "Forms",            icon: ListChecks },
+  { href: "/dashboard/staff",  label: "Staff Management", icon: Users },
 ];
 
 export default function DashboardShell({ children }: DashboardShellProps) {
@@ -257,7 +256,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                     </>
                   )}
                   <Link href="/dashboard/profile">
-                    <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-200">
                       <CircleUserRound className="h-4 w-4" />
                       View Profile
                     </button>

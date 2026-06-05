@@ -106,7 +106,7 @@ export default function Page() {
                     <button
                       onClick={() => {
                         setMenuOpen(false)
-                        router.push('/dashboard/my-forms')
+                        router.push('/staff/forms')
                       }}
                       className="block w-full px-4 py-2 text-left text-sm text-slate-900"
                     >
@@ -115,7 +115,7 @@ export default function Page() {
                     <button
                       onClick={() => {
                         setMenuOpen(false)
-                        router.push('/dashboard/profile')
+                        router.push('/staff')
                       }}
                       className="block w-full px-4 py-2 text-left text-sm text-slate-900"
                     >

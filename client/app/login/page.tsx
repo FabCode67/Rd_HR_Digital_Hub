@@ -27,7 +27,7 @@ export default function LoginPage() {
       if (role === "admin") {
         router.push("/dashboard");
       } else {
-        router.push("/profile");
+        router.push("/staff");
       }
     } catch (err: any) {
       setError(err.message || "Login failed. Please try again.");

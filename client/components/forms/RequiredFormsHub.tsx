@@ -276,12 +276,12 @@ export default function RequiredFormsHub() {
 
   const markCard = (item: FormStatus) =>
     item.is_completed
-      ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/20"
-      : "border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20";
+      ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40"
+      : "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-slate-800";
 
   return (
     <ProtectedRoute>
-      <section className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] px-4 py-8 dark:bg-slate-950">
+      <section className="min-h-screen bg-slate-50 px-4 py-8 dark:bg-slate-950">
         <div className="mx-auto max-w-7xl space-y-6">
           <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
             <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
@@ -372,7 +372,7 @@ export default function RequiredFormsHub() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <FileSignature className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                            <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-white">{copy.title}</h2>
+                            <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{copy.title}</h2>
                           </div>
                           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{copy.summary}</p>
                         </div>
@@ -387,8 +387,8 @@ export default function RequiredFormsHub() {
                         </span>
                       </div>
 
-                      <div className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        {item.is_completed ? <BadgeCheck className="h-4 w-4 text-emerald-600" /> : <ShieldAlert className="h-4 w-4 text-amber-600" />}
+                      <div className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {item.is_completed ? <BadgeCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
                         {item.is_completed ? "Submitted and recorded" : "Awaiting your acknowledgement"}
                       </div>
                     </button>
