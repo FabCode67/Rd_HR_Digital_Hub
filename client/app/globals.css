@@ -186,6 +186,11 @@
     font-style: italic;
   }
 
+  .dark .ProseMirror blockquote {
+    border-left-color: #4b5563;
+    color: #9ca3af;
+  }
+
   .ProseMirror:focus {
     box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
   }

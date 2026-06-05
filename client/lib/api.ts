@@ -475,6 +475,10 @@ export const formAPI = {
     return fetchAPI<any[]>(ENDPOINTS.FORM_ASSIGNED_STAFF(formId));
   },
 
+  async getFormResponses(formId: string): Promise<any[]> {
+    return fetchAPI<any[]>(`${API_PREFIX}/forms/${formId}/responses`);
+  },
+
   async getFormsAssignedToEmployee(employeeId: string): Promise<any[]> {
     return fetchAPI<any[]>(ENDPOINTS.EMPLOYEE_ASSIGNED_FORMS(employeeId));
   },

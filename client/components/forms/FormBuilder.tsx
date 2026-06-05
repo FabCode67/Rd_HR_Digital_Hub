@@ -164,41 +164,69 @@ const FormBuilder: React.FC<{ formId?: string; onFormSaved?: () => void }> = ({
     }
 
     setIsLoading(true);
+    setError(null);
     try {
-      const payload = {
-        name: formData.name,
-        description: formData.description,
-        is_active: formData.is_active,
-        fields: fields.map((field, index) => ({
-          field_name: field.field_name,
-          field_label: field.field_label,
-          field_type: field.field_type,
-          is_required: field.is_required,
-          help_text: field.help_text,
-          options: field.options,
-          order: index,
-        })),
-      };
-
       if (formData.id) {
+        // --- UPDATE PATH ---
+        // 1. Save form metadata
         await apiClient.form.updateForm(formData.id, {
-          name: payload.name,
-          description: payload.description,
-          is_active: payload.is_active,
+          name: formData.name,
+          description: formData.description,
+          is_active: formData.is_active,
         });
-        // Update fields separately if needed
+
+        // 2. Sync fields: delete removed fields, add new ones
+        //    Fields that already have an `id` existed on the server.
+        //    Fields without an `id` are newly added in this session.
+        const originalIds = new Set(
+          (await apiClient.form.getById(formData.id)).fields?.map((f) => f.id) ?? []
+        );
+        const currentIds = new Set(fields.filter((f) => f.id).map((f) => f.id as string));
+
+        // Delete fields that were removed
+        const toDelete = [...originalIds].filter((id) => !currentIds.has(id));
+        await Promise.all(toDelete.map((id) => apiClient.form.deleteFormField(id)));
+
+        // Add new fields (those without an id)
+        const toAdd = fields.filter((f) => !f.id);
+        await Promise.all(
+          toAdd.map((field, i) =>
+            apiClient.form.addFormField(formData.id!, {
+              field_name: field.field_name,
+              field_label: field.field_label,
+              field_type: field.field_type as any,
+              is_required: field.is_required,
+              help_text: field.help_text,
+              options: field.options,
+              order: fields.indexOf(field),
+            })
+          )
+        );
+
         setSuccess('Form updated successfully!');
       } else {
-        const result = await apiClient.form.createForm(payload);
+        // --- CREATE PATH ---
+        const result = await apiClient.form.createForm({
+          name: formData.name,
+          description: formData.description,
+          is_active: formData.is_active,
+          fields: fields.map((field, index) => ({
+            field_name: field.field_name,
+            field_label: field.field_label,
+            field_type: field.field_type as any,
+            is_required: field.is_required,
+            help_text: field.help_text,
+            options: field.options,
+            order: index,
+          })),
+        });
         setFormData({ ...formData, id: result.id });
         setSuccess('Form created successfully!');
       }
 
       setTimeout(() => {
         setSuccess(null);
-        if (onFormSaved) {
-          onFormSaved();
-        }
+        if (onFormSaved) onFormSaved();
       }, 2000);
     } catch (err) {
       setError('Failed to save form');
