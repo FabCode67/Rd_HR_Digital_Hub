@@ -146,6 +146,7 @@ class FormFieldType(str, enum.Enum):
     CHECKBOX = "checkbox"
     RADIO = "radio"
     TEXTAREA = "textarea"
+    SIGNATURE = "signature"
 
 
 class FormField(Base):

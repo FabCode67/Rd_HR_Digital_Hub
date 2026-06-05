@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
 import { FormAnswerInput, FormField, FormStatus } from "@/lib/types";
+import SignaturePad from "./SignaturePad";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -177,6 +178,18 @@ function getFieldLabel(field: FormField): string {
   return field.field_label;
 }
 
+/** Returns true for any field that should be rendered as a signature pad */
+function isSignatureField(field: FormField): boolean {
+  const name  = field.field_name.toLowerCase();
+  const label = field.field_label.toLowerCase();
+  return (
+    name.includes("signature") ||
+    name.includes("sign") ||
+    label.includes("signature") ||
+    label.includes("sign here")
+  );
+}
+
 export default function RequiredFormsHub() {
   const { user, isLoading: authLoading } = useAuth();
   const [forms, setForms] = useState<FormStatus[]>([]);
@@ -243,6 +256,25 @@ export default function RequiredFormsHub() {
 
   const handleSubmit = async (event: React.FormEvent, formStatus: FormStatus) => {
     event.preventDefault();
+
+    // Validate required signature fields
+    const formValues = values[formStatus.form.id] || {};
+    const missingSignature = (formStatus.form.fields || []).some(
+      (field) => field.is_required && isSignatureField(field) && !formValues[field.id]
+    );
+    if (missingSignature) {
+      setError("Please provide your signature before submitting.");
+      return;
+    }
+
+    // Validate required checkboxes
+    const missingCheckbox = (formStatus.form.fields || []).some(
+      (field) => field.is_required && field.field_type === "checkbox" && formValues[field.id] !== "true"
+    );
+    if (missingCheckbox) {
+      setError("Please check all required boxes before submitting.");
+      return;
+    }
 
     setSubmittingFormId(formStatus.form.id);
     setError("");
@@ -457,6 +489,7 @@ export default function RequiredFormsHub() {
                                           <input
                                             type="checkbox"
                                             checked={fieldValue === "true"}
+                                            disabled={selectedForm.is_completed}
                                             onChange={(event) =>
                                               setValues((current) => ({
                                                 ...current,
@@ -471,6 +504,22 @@ export default function RequiredFormsHub() {
                                           <span>{label}</span>
                                         </label>
                                       </div>
+                                    ) : isSignatureField(field) ? (
+                                      <SignaturePad
+                                        label={label}
+                                        required={field.is_required}
+                                        disabled={selectedForm.is_completed}
+                                        value={fieldValue}
+                                        onChange={(dataURL) =>
+                                          setValues((current) => ({
+                                            ...current,
+                                            [selectedForm.form.id]: {
+                                              ...(current[selectedForm.form.id] || {}),
+                                              [field.id]: dataURL,
+                                            },
+                                          }))
+                                        }
+                                      />
                                     ) : (
                                       <>
                                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -480,6 +529,7 @@ export default function RequiredFormsHub() {
                                         {field.field_type === "textarea" ? (
                                           <textarea
                                             value={fieldValue}
+                                            disabled={selectedForm.is_completed}
                                             onChange={(event) =>
                                               setValues((current) => ({
                                                 ...current,
@@ -505,6 +555,7 @@ export default function RequiredFormsHub() {
                                                       : "text"
                                             }
                                             value={fieldValue}
+                                            disabled={selectedForm.is_completed}
                                             onChange={(event) =>
                                               setValues((current) => ({
                                                 ...current,

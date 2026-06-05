@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
-import { Button } from '@/components/ui/button';
 import RichTextEditor from './RichTextEditor';
-import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import SignaturePad from './SignaturePad';
+import { Plus, Trash2, Save, Pen, GripVertical } from 'lucide-react';
 import type { FormField as ApiFormField } from '@/lib/types';
 
 type FormFieldDraft = Pick<
@@ -24,17 +24,18 @@ interface FormData {
   fields?: FormFieldDraft[];
 }
 
-const FIELD_TYPES = [
-  'text',
-  'email',
-  'phone',
-  'number',
-  'date',
-  'datetime',
-  'select',
-  'checkbox',
-  'radio',
-  'textarea',
+const FIELD_TYPES: { value: string; label: string; description: string }[] = [
+  { value: 'text',      label: 'Text',        description: 'Short text input' },
+  { value: 'textarea',  label: 'Text Area',   description: 'Multi-line text' },
+  { value: 'signature', label: 'Signature',   description: 'Hand-drawn signature pad' },
+  { value: 'email',     label: 'Email',       description: 'Email address' },
+  { value: 'phone',     label: 'Phone',       description: 'Phone number' },
+  { value: 'number',    label: 'Number',      description: 'Numeric value' },
+  { value: 'date',      label: 'Date',        description: 'Date picker' },
+  { value: 'datetime',  label: 'Date & Time', description: 'Date and time' },
+  { value: 'checkbox',  label: 'Checkbox',    description: 'Yes / No checkbox' },
+  { value: 'select',    label: 'Dropdown',    description: 'Select from options' },
+  { value: 'radio',     label: 'Radio',       description: 'Choose one option' },
 ];
 
 const FormBuilder: React.FC<{ formId?: string; onFormSaved?: () => void }> = ({
@@ -59,16 +60,12 @@ const FormBuilder: React.FC<{ formId?: string; onFormSaved?: () => void }> = ({
     order: 0,
   });
 
-  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Load form if editing
   useEffect(() => {
-    if (formId) {
-      loadForm();
-    }
+    if (formId) loadForm();
   }, [formId]);
 
   const loadForm = async () => {
@@ -85,338 +82,294 @@ const FormBuilder: React.FC<{ formId?: string; onFormSaved?: () => void }> = ({
         });
         setFields(response.fields || []);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load form');
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target as any;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
-    });
-  };
-
-  const handleDescriptionChange = (value: string) => {
-    setFormData({
-      ...formData,
-      description: value,
-    });
-  };
-
   const handleAddField = () => {
-    if (!newField.field_name || !newField.field_label) {
+    if (!newField.field_name.trim() || !newField.field_label.trim()) {
       setError('Field name and label are required');
       return;
     }
-
-    const fieldWithOrder = {
-      ...newField,
-      order: fields.length,
-    };
-
-    setFields([...fields, fieldWithOrder]);
-    setNewField({
-      field_name: '',
-      field_label: '',
-      field_type: 'text',
-      is_required: true,
-      help_text: '',
-      options: '',
-      order: 0,
-    });
+    setFields(prev => [...prev, { ...newField, order: prev.length }]);
+    setNewField({ field_name: '', field_label: '', field_type: 'text', is_required: true, help_text: '', options: '', order: 0 });
     setError(null);
-  };
-
-  const handleDeleteField = (index: number) => {
-    setFields(fields.filter((_, i) => i !== index));
-  };
-
-  const handleFieldChange = (index: number, key: string, value: any) => {
-    const updatedFields = [...fields];
-    updatedFields[index] = {
-      ...updatedFields[index],
-      [key]: value,
-    };
-    setFields(updatedFields);
-  };
-
-  const handleNewFieldChange = (key: string, value: any) => {
-    setNewField({
-      ...newField,
-      [key]: value,
-    });
   };
 
   const handleSaveForm = async () => {
-    if (!formData.name.trim()) {
-      setError('Form name is required');
-      return;
-    }
+    if (!formData.name.trim()) { setError('Form name is required'); return; }
+    if (fields.length === 0)   { setError('Add at least one field'); return; }
 
-    if (fields.length === 0) {
-      setError('Form must have at least one field');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true); setError(null);
     try {
       if (formData.id) {
-        // --- UPDATE PATH ---
-        // 1. Save form metadata
         await apiClient.form.updateForm(formData.id, {
           name: formData.name,
           description: formData.description,
           is_active: formData.is_active,
         });
-
-        // 2. Sync fields: delete removed fields, add new ones
-        //    Fields that already have an `id` existed on the server.
-        //    Fields without an `id` are newly added in this session.
-        const originalIds = new Set(
-          (await apiClient.form.getById(formData.id)).fields?.map((f) => f.id) ?? []
-        );
-        const currentIds = new Set(fields.filter((f) => f.id).map((f) => f.id as string));
-
-        // Delete fields that were removed
-        const toDelete = [...originalIds].filter((id) => !currentIds.has(id));
-        await Promise.all(toDelete.map((id) => apiClient.form.deleteFormField(id)));
-
-        // Add new fields (those without an id)
-        const toAdd = fields.filter((f) => !f.id);
+        const original = new Set((await apiClient.form.getById(formData.id)).fields?.map(f => f.id) ?? []);
+        const current  = new Set(fields.filter(f => f.id).map(f => f.id as string));
+        await Promise.all([...original].filter(id => !current.has(id)).map(id => apiClient.form.deleteFormField(id)));
         await Promise.all(
-          toAdd.map((field, i) =>
+          fields.filter(f => !f.id).map(f =>
             apiClient.form.addFormField(formData.id!, {
-              field_name: field.field_name,
-              field_label: field.field_label,
-              field_type: field.field_type as any,
-              is_required: field.is_required,
-              help_text: field.help_text,
-              options: field.options,
-              order: fields.indexOf(field),
+              field_name: f.field_name, field_label: f.field_label,
+              field_type: f.field_type as any, is_required: f.is_required,
+              help_text: f.help_text, options: f.options, order: fields.indexOf(f),
             })
           )
         );
-
-        setSuccess('Form updated successfully!');
+        setSuccess('Form updated!');
       } else {
-        // --- CREATE PATH ---
         const result = await apiClient.form.createForm({
-          name: formData.name,
-          description: formData.description,
-          is_active: formData.is_active,
-          fields: fields.map((field, index) => ({
-            field_name: field.field_name,
-            field_label: field.field_label,
-            field_type: field.field_type as any,
-            is_required: field.is_required,
-            help_text: field.help_text,
-            options: field.options,
-            order: index,
+          name: formData.name, description: formData.description, is_active: formData.is_active,
+          fields: fields.map((f, i) => ({
+            field_name: f.field_name, field_label: f.field_label,
+            field_type: f.field_type as any, is_required: f.is_required,
+            help_text: f.help_text, options: f.options, order: i,
           })),
         });
-        setFormData({ ...formData, id: result.id });
-        setSuccess('Form created successfully!');
+        setFormData(prev => ({ ...prev, id: result.id }));
+        setSuccess('Form created!');
       }
-
-      setTimeout(() => {
-        setSuccess(null);
-        if (onFormSaved) onFormSaved();
-      }, 2000);
-    } catch (err) {
+      setTimeout(() => { setSuccess(null); onFormSaved?.(); }, 2000);
+    } catch {
       setError('Failed to save form');
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const fieldTypeInfo = FIELD_TYPES.find(t => t.value === newField.field_type);
+
   return (
-    <div className="space-y-6 rounded-lg border border-gray-200 bg-white p-6">
-      <h2 className="text-2xl font-bold">{formData.id ? 'Edit Form' : 'Create New Form'}</h2>
+    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+        {formData.id ? 'Edit Form' : 'Create New Form'}
+      </h2>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
       )}
-
       {success && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-4 text-green-700">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
           {success}
         </div>
       )}
 
-      {/* Form Basic Info */}
+      {/* ── Form metadata ── */}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Form Name</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Form Name</label>
           <input
-            type="text"
-            name="name"
             value={formData.name}
-            onChange={handleFormChange}
-            placeholder="e.g., Background Check Form"
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+            onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+            placeholder="e.g., Background Check Consent"
+            className="field mt-1"
           />
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Form Description (with Terms & Conditions)
-          </label>
-          <p className="mb-2 text-sm text-gray-500">
-            Use rich text to add terms, conditions, and instructions
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Description / Terms</label>
+          <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">
+            Use rich text to add policy text, terms, and instructions
           </p>
           <RichTextEditor
             value={formData.description}
-            onChange={handleDescriptionChange}
+            onChange={v => setFormData(prev => ({ ...prev, description: v }))}
             placeholder="Add form description, terms & conditions..."
           />
         </div>
-
-        <div className="flex items-center">
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
           <input
             type="checkbox"
-            name="is_active"
             checked={formData.is_active}
-            onChange={handleFormChange}
-            className="h-4 w-4 rounded border-gray-300"
+            onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+            className="h-4 w-4 rounded border-slate-300"
           />
-          <label className="ml-2 text-sm text-gray-700">Active</label>
-        </div>
+          Active (visible to staff)
+        </label>
       </div>
 
-      {/* Form Fields */}
-      <div className="space-y-4 border-t border-gray-200 pt-6">
-        <h3 className="text-lg font-semibold">Form Fields</h3>
+      {/* ── Existing fields ── */}
+      <div className="space-y-3 border-t border-slate-200 pt-5 dark:border-slate-800">
+        <h3 className="font-semibold text-slate-900 dark:text-slate-100">Form Fields ({fields.length})</h3>
 
-        {/* Existing Fields */}
-        <div className="space-y-3">
-          {fields.map((field, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 p-4"
-            >
-              <div className="flex-1">
-                <p className="font-medium text-gray-900">{field.field_label}</p>
-                <p className="text-sm text-gray-500">
-                  {field.field_type} {field.is_required ? '(required)' : '(optional)'}
-                </p>
+        {fields.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-400 dark:border-slate-700 dark:text-slate-500">
+            No fields yet — add one below
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {fields.map((field, index) => (
+              <div key={index}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+                <GripVertical className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {field.field_type === 'signature' && (
+                      <Pen className="h-3.5 w-3.5 text-cyan-500" />
+                    )}
+                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {field.field_label}
+                    </p>
+                    {field.is_required && (
+                      <span className="text-xs text-red-500">*</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {FIELD_TYPES.find(t => t.value === field.field_type)?.label ?? field.field_type}
+                    {field.field_name ? ` · ${field.field_name}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFields(prev => prev.filter((_, i) => i !== index))}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                onClick={() => handleDeleteField(index)}
-                className="ml-2 p-2 text-red-600 hover:bg-red-50 rounded"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-        {/* Add New Field */}
-        <div className="space-y-4 rounded-md border border-gray-200 bg-blue-50 p-4">
-          <h4 className="font-semibold text-gray-900">Add New Field</h4>
+      {/* ── Add new field ── */}
+      <div className="space-y-4 rounded-2xl border border-cyan-200 bg-cyan-50/50 p-5 dark:border-cyan-900/40 dark:bg-cyan-950/10">
+        <h4 className="font-semibold text-slate-900 dark:text-slate-100">Add New Field</h4>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Field Name</label>
-              <input
-                type="text"
-                value={newField.field_name}
-                onChange={(e) => handleNewFieldChange('field_name', e.target.value)}
-                placeholder="e.g., first_name"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Field Label</label>
-              <input
-                type="text"
-                value={newField.field_label}
-                onChange={(e) => handleNewFieldChange('field_label', e.target.value)}
-                placeholder="e.g., First Name"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Field Type</label>
-              <select
-                value={newField.field_type}
-                onChange={(e) => handleNewFieldChange('field_type', e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              >
-                {FIELD_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <label className="flex items-center text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={newField.is_required}
-                  onChange={(e) => handleNewFieldChange('is_required', e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className="ml-2">Required</span>
-              </label>
-            </div>
-
-            {(newField.field_type === 'select' || newField.field_type === 'radio') && (
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Options (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={newField.options}
-                  onChange={(e) => handleNewFieldChange('options', e.target.value)}
-                  placeholder="e.g., Option 1, Option 2, Option 3"
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-                />
-              </div>
-            )}
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Help Text</label>
-              <input
-                type="text"
-                value={newField.help_text}
-                onChange={(e) => handleNewFieldChange('help_text', e.target.value)}
-                placeholder="Optional help text for the field"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              Field Name <span className="text-slate-400">(internal key)</span>
+            </label>
+            <input
+              value={newField.field_name}
+              onChange={e => setNewField(prev => ({ ...prev, field_name: e.target.value }))}
+              placeholder="e.g., employee_signature"
+              className="field"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              Field Label <span className="text-slate-400">(shown to staff)</span>
+            </label>
+            <input
+              value={newField.field_label}
+              onChange={e => setNewField(prev => ({ ...prev, field_label: e.target.value }))}
+              placeholder="e.g., Employee Signature"
+              className="field"
+            />
           </div>
 
-          <button
-            onClick={handleAddField}
-            className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
-            <Plus size={18} />
-            Add Field
-          </button>
+          {/* Field type selector — visual cards */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+              Field Type
+            </label>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+              {FIELD_TYPES.map(type => (
+                <button
+                  key={type.value}
+                  type="button"
+                  onClick={() => setNewField(prev => ({ ...prev, field_type: type.value }))}
+                  className={`flex flex-col items-center rounded-xl border px-2 py-2.5 text-center text-xs font-medium transition-all ${
+                    newField.field_type === type.value
+                      ? 'border-cyan-400 bg-cyan-50 text-cyan-700 dark:border-cyan-500 dark:bg-cyan-950/40 dark:text-cyan-300'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600'
+                  }`}
+                >
+                  {type.value === 'signature' && <Pen className="mb-1 h-3.5 w-3.5" />}
+                  {type.label}
+                </button>
+              ))}
+            </div>
+            {fieldTypeInfo && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {fieldTypeInfo.description}
+              </p>
+            )}
+          </div>
+
+          {/* Signature preview */}
+          {newField.field_type === 'signature' && (
+            <div className="sm:col-span-2">
+              <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+                Preview — this is what staff will see:
+              </p>
+              <SignaturePad
+                label={newField.field_label || 'Signature'}
+                required={newField.is_required}
+              />
+            </div>
+          )}
+
+          {/* Options for select/radio */}
+          {(newField.field_type === 'select' || newField.field_type === 'radio') && (
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                Options <span className="text-slate-400">(comma-separated)</span>
+              </label>
+              <input
+                value={newField.options}
+                onChange={e => setNewField(prev => ({ ...prev, options: e.target.value }))}
+                placeholder="Option A, Option B, Option C"
+                className="field"
+              />
+            </div>
+          )}
+
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+              Help Text <span className="text-slate-400">(optional hint shown below the field)</span>
+            </label>
+            <input
+              value={newField.help_text}
+              onChange={e => setNewField(prev => ({ ...prev, help_text: e.target.value }))}
+              placeholder="e.g., Sign using your mouse or finger"
+              className="field"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="field-required"
+              checked={newField.is_required}
+              onChange={e => setNewField(prev => ({ ...prev, is_required: e.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300 text-cyan-600"
+            />
+            <label htmlFor="field-required" className="text-sm text-slate-700 dark:text-slate-300">
+              Required field
+            </label>
+          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleAddField}
+          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-600 transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Add Field
+        </button>
       </div>
 
-      {/* Save Button */}
-      <div className="flex gap-4 border-t border-gray-200 pt-6">
+      {/* ── Save ── */}
+      <div className="flex gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
         <button
+          type="button"
           onClick={handleSaveForm}
           disabled={isLoading}
-          className="flex items-center gap-2 rounded-md bg-green-600 px-6 py-2 text-white hover:bg-green-700 disabled:bg-gray-400"
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors"
         >
-          <Save size={18} />
-          {isLoading ? 'Saving...' : 'Save Form'}
+          <Save className="h-4 w-4" />
+          {isLoading ? 'Saving…' : formData.id ? 'Update Form' : 'Create Form'}
         </button>
       </div>
     </div>

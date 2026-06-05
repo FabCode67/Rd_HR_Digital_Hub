@@ -232,7 +232,8 @@ export type FormFieldType =
   | "select"
   | "checkbox"
   | "radio"
-  | "textarea";
+  | "textarea"
+  | "signature";
 
 export interface FormField {
   id: UUID;
