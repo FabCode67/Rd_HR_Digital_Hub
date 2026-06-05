@@ -279,6 +279,23 @@ def get_form_responses(
     return FormResponseService.get_form_responses(db, form_id, skip=skip, limit=limit)
 
 
+@router.get("/{form_id}/responses/employee/{employee_id}", response_model=FormResponseDetailResponse)
+def get_employee_form_response(
+    form_id: UUID,
+    employee_id: UUID,
+    admin=Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get a specific employee's response (with answers) for a form."""
+    form_response = db.query(FormResponseModel).filter(
+        FormResponseModel.form_id == form_id,
+        FormResponseModel.employee_id == employee_id,
+    ).first()
+    if not form_response:
+        raise HTTPException(status_code=404, detail="No response found for this employee")
+    return form_response
+
+
 @router.put("/{form_id}/responses/{response_id}/submit", response_model=FormResponseDetailResponse)
 def mark_response_submitted(
     form_id: UUID,

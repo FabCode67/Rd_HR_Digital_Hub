@@ -2,30 +2,56 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRight, Building2, ChartNoAxesCombined, ShieldCheck } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ArrowRight, Building2, ChartNoAxesCombined, ShieldCheck, Users, FileText, Network, BarChart3, LogOut, ChevronDown } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 
-const valuePoints = [
+// ── Stats ──────────────────────────────────────────────────────────────────────
+const stats = [
+  { value: "360°", label: "Org Visibility" },
+  { value: "Real-time", label: "Analytics" },
+  { value: "Role-based", label: "Access Control" },
+  { value: "Digital", label: "Form Signing" },
+]
+
+// ── Feature cards ──────────────────────────────────────────────────────────────
+const features = [
   {
-    title: "Organization Clarity",
-    description:
-      "Visualize department and position hierarchies with real-time updates across your structure.",
-    icon: Building2,
+    icon: Network,
+    title: "Org Chart",
+    desc: "Interactive department and position hierarchy with live vacancy tracking.",
+    accent: "#06b6d4",
   },
   {
-    title: "HR Decision Intelligence",
-    description:
-      "Track workforce trends and operational metrics from one analytics-friendly platform.",
-    icon: ChartNoAxesCombined,
+    icon: Users,
+    title: "Employee Hub",
+    desc: "Manage the full employee lifecycle — from onboarding to position history.",
+    accent: "#8b5cf6",
   },
   {
-    title: "Enterprise-Grade Security",
-    description:
-      "Built for regulated institutions with secure workflows, role controls, and audit-ready records.",
+    icon: BarChart3,
+    title: "Analytics",
+    desc: "Recharts-powered dashboards: headcount, fill rates, growth trends.",
+    accent: "#10b981",
+  },
+  {
+    icon: FileText,
+    title: "Digital Forms",
+    desc: "Assign, track and collect signed compliance forms with signature pads.",
+    accent: "#f59e0b",
+  },
+  {
     icon: ShieldCheck,
+    title: "Role Security",
+    desc: "Admin and staff portals with JWT auth, protected routes, and audit trails.",
+    accent: "#f43f5e",
+  },
+  {
+    icon: Building2,
+    title: "Departments",
+    desc: "Multi-level department trees with parent/child relationships and metadata.",
+    accent: "#0ea5e9",
   },
 ]
 
@@ -33,271 +59,401 @@ export default function Page() {
   const { isAuthenticated, isLoading, user, logout } = useAuth()
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
-  const displayName = user?.full_name || (user?.email ? user.email.split("@")[0] : "")
+  const [scrolled, setScrolled] = useState(false)
+  const heroRef = useRef<HTMLDivElement>(null)
+
+  const displayName = user?.full_name || user?.email?.split("@")[0] || ""
 
   useEffect(() => {
-    // Do not auto-redirect logged-in users away from the landing page.
-    // Landing page should be accessible even when authenticated.
-  }, [isLoading, isAuthenticated, router])
+    const handleScroll = () => setScrolled(window.scrollY > 40)
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-cyan-500"></div>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-700 border-t-cyan-400" />
       </div>
     )
   }
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-slate-950 text-white">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[-18rem] h-[34rem] w-[34rem] -translate-x-1/2 rounded-full bg-cyan-400/15 blur-3xl" />
-        <div className="absolute -left-28 top-56 h-[24rem] w-[24rem] rounded-full bg-sky-300/10 blur-3xl" />
-        <div className="absolute -right-20 bottom-0 h-[22rem] w-[22rem] rounded-full bg-emerald-300/10 blur-3xl" />
+    <main className="relative min-h-screen overflow-x-hidden bg-[#050810] text-white selection:bg-cyan-400/30">
+
+      {/* ── Background atmosphere ── */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute left-[-20%] top-[-10%] h-[600px] w-[600px] rounded-full bg-cyan-500/8 blur-[120px]" />
+        <div className="absolute right-[-15%] top-[30%] h-[500px] w-[500px] rounded-full bg-violet-500/6 blur-[100px]" />
+        <div className="absolute bottom-[-10%] left-[20%] h-[400px] w-[400px] rounded-full bg-emerald-500/6 blur-[100px]" />
+        {/* Fine grain texture */}
+        <div className="absolute inset-0 opacity-[0.03]"
+          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")" }} />
+        {/* Grid lines */}
+        <div className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)", backgroundSize: "80px 80px" }} />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col px-5 pb-16 pt-5 sm:px-8 lg:px-10">
-        <header className="animate-rise border-white/10 bg-white/5 backdrop-blur-xl rounded-2xl border px-4 py-3 sm:px-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="relative h-9 w-28 overflow-hidden rounded-md bg-white/90 p-1">
-                <Image
-                  src="/NCBA_LOGO_2.jpg"
-                  alt="NCBA"
-                  fill
-                  
-                  sizes="112px"
-                  className="object-cover"
-                  priority
-                />
-              </div>
-              <span className="text-sm tracking-wide text-slate-100/90">
-                HR Digital Hub
+      {/* ── Nav ── */}
+      <nav className={`fixed top-0 z-50 w-full transition-all duration-500 ${scrolled ? "border-b border-white/8 bg-[#050810]/90 backdrop-blur-xl" : ""}`}>
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-10">
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <div className="relative h-8 w-20 overflow-hidden rounded-md bg-white">
+              <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="80px" className="object-contain" priority />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300">HR Digital Hub</p>
+              <p className="text-[9px] tracking-[0.15em] text-slate-500 uppercase">Rwanda</p>
+            </div>
+          </div>
+
+          {/* Nav links */}
+          <div className="hidden items-center gap-8 text-[13px] tracking-wide text-slate-400 md:flex">
+            {["Features", "Analytics", "Security"].map((l) => (
+              <a key={l} href={`#${l.toLowerCase()}`}
+                className="transition-colors hover:text-cyan-300">{l}</a>
+            ))}
+          </div>
+
+          {/* Auth area */}
+          {isAuthenticated ? (
+            <div className="relative">
+              <button onClick={() => setMenuOpen(s => !s)}
+                className="flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-sm text-slate-200 backdrop-blur transition hover:bg-white/10">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-[10px] font-bold text-white">
+                  {displayName[0]?.toUpperCase()}
+                </span>
+                {displayName}
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur">
+                  <div className="border-b border-white/8 px-4 py-3">
+                    <p className="text-xs text-slate-400">Signed in as</p>
+                    <p className="truncate text-sm font-medium text-white">{user?.email}</p>
+                  </div>
+                  {[
+                    { label: "My Profile", href: "/staff" },
+                    { label: "My Forms", href: "/staff/forms" },
+                    ...(user?.role === "admin" ? [{ label: "Dashboard", href: "/dashboard" }] : []),
+                  ].map(({ label, href }) => (
+                    <button key={label} onClick={() => { setMenuOpen(false); router.push(href) }}
+                      className="flex w-full items-center px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white">
+                      {label}
+                    </button>
+                  ))}
+                  <div className="border-t border-white/8">
+                    <button onClick={() => { setMenuOpen(false); logout(); router.push("/") }}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-400 transition hover:bg-red-950/30">
+                      <LogOut className="h-3.5 w-3.5" /> Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link href="/login"
+              className="inline-flex items-center gap-2 rounded-full bg-cyan-400 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">
+              Sign In <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
+      </nav>
+
+      {/* ── Hero ── */}
+      <section ref={heroRef} className="relative mx-auto max-w-7xl px-6 pb-24 pt-36 lg:px-10 lg:pt-44">
+        <div className="grid items-center gap-16 lg:grid-cols-[1fr_420px]">
+
+          {/* Left copy */}
+          <div className="space-y-8">
+            {/* Eyebrow */}
+            <div className="inline-flex items-center gap-2.5 rounded-full border border-cyan-400/20 bg-cyan-400/8 px-4 py-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-300">
+                NCBA Rwanda · Workforce Platform
               </span>
             </div>
 
-            <div className="hidden items-center gap-7 text-sm text-slate-100/80 md:flex">
-              <a href="#value" className="transition hover:text-white">
-                Value
-              </a>
-              <a href="#features" className="transition hover:text-white">
-                Features
-              </a>
-              <a href="#experience" className="transition hover:text-white">
-                Experience
-              </a>
-            </div>
-
-            {isAuthenticated ? (
-              <div className="relative">
-                <button
-                  onClick={() => setMenuOpen((s) => !s)}
-                  className="inline-flex h-9 items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-sm text-white"
-                >
-                  {displayName}
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.936a.75.75 0 011.08 1.04l-4.25 4.507a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                  </svg>
-                </button>
-                {menuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md bg-white/95 shadow-lg">
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        router.push('/staff/forms')
-                      }}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
-                    >
-                      My Forms
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        router.push('/staff')
-                      }}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
-                    >
-                      Profile
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false)
-                        logout();
-                        router.push("/");
-                      }}
-                      className="block w-full px-4 py-2 text-left text-sm text-slate-900"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Button
-                asChild
-                className="h-9 rounded-full bg-cyan-400 px-4 text-slate-950 hover:bg-cyan-300"
-              >
-                <Link href="/login">Sign In</Link>
-              </Button>
-            )}
-          </div>
-        </header>
-
-        <section className="grid items-center gap-10 pb-16 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:pt-20">
-          <div className="space-y-7">
-            <p className="animate-rise-delay-1 animate-rise inline-flex rounded-full border border-cyan-200/20 bg-cyan-200/10 px-4 py-1 text-xs tracking-[0.18em] text-cyan-100 uppercase">
-              Workforce Operating System
-            </p>
-            <h1 className="animate-rise-delay-2 animate-rise max-w-2xl text-balance text-4xl leading-tight [font-family:var(--font-heading)] sm:text-5xl lg:text-6xl">
-              Designed for NCBA teams to lead with a sharper HR structure.
+            <h1 className="text-5xl font-bold leading-[1.08] tracking-tight text-white sm:text-6xl lg:text-7xl">
+              HR operations,{" "}
+              <span className="relative">
+                <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 bg-clip-text text-transparent">
+                  reimagined
+                </span>
+                <span className="absolute -bottom-1 left-0 h-px w-full bg-gradient-to-r from-cyan-400/60 to-transparent" />
+              </span>
+              {" "}for modern banking.
             </h1>
-            <p className="animate-rise-delay-3 animate-rise max-w-xl text-lg leading-relaxed text-slate-200/85">
-              A modern platform for employee data, organizational design, and
-              position governance, built to support high-performance banking
-              operations.
+
+            <p className="max-w-lg text-lg leading-relaxed text-slate-300/80">
+              A unified platform for organizational structure, employee management,
+              digital forms, and real-time workforce analytics — built exclusively
+              for NCBA Rwanda.
             </p>
 
-            <div className="animate-rise-delay-3 animate-rise flex flex-wrap gap-3 pt-2">
-              <Button
-                asChild
-                size="lg"
-                className="h-11 rounded-full bg-cyan-400 px-6 text-slate-950 hover:bg-cyan-300"
-              >
-                <Link href="/login" className="gap-2">
-                  Sign In
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="h-11 rounded-full border-white/25 bg-white/5 px-6 text-white hover:bg-white/10"
-              >
-                <Link href="/login">Learn More</Link>
-              </Button>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/login"
+                className="group inline-flex items-center gap-2.5 rounded-full bg-cyan-400 px-7 py-3.5 text-sm font-bold text-slate-950 shadow-[0_0_32px_rgba(6,182,212,0.3)] transition-all hover:bg-cyan-300 hover:shadow-[0_0_48px_rgba(6,182,212,0.4)]">
+                Get Started
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <a href="#features"
+                className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-slate-200">
+                Explore features <ChevronDown className="h-4 w-4" />
+              </a>
+            </div>
+
+            {/* Stats row */}
+            <div className="flex flex-wrap gap-8 border-t border-white/8 pt-8">
+              {stats.map(({ value, label }) => (
+                <div key={label}>
+                  <p className="text-2xl font-bold text-white">{value}</p>
+                  <p className="mt-0.5 text-xs tracking-wide text-slate-500 uppercase">{label}</p>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="animate-rise-delay-2 animate-rise relative">
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-gradient-to-b from-slate-900/80 to-slate-950/70 p-3 shadow-[0_20px_80px_rgba(15,23,42,0.6)]">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="relative col-span-2 h-48 overflow-hidden rounded-2xl">
-                  <Image
-                    src="/ncba.jpg"
-                    alt="NCBA workplace"
-                    fill
-                    sizes="(max-width: 768px) 100vw, 560px"
-                    className="object-cover"
-                  />
-                </div>
-                <div className="relative h-40 overflow-hidden rounded-2xl">
-                  <Image
-                    src="/download.webp"
-                    alt="Digital systems"
-                    fill
-                    sizes="(max-width: 768px) 100vw, 272px"
-                    className="object-cover"
-                  />
-                </div>
-                <div className="relative h-40 overflow-hidden rounded-2xl">
-                  <Image
-                    src="/images.jpg"
-                    alt="Team collaboration"
-                    fill
-                    sizes="(max-width: 768px) 100vw, 272px"
-                    className="object-cover"
-                  />
+          {/* Right — visual card stack */}
+          <div className="relative hidden lg:block">
+            {/* Glow behind */}
+            <div className="absolute inset-0 rounded-3xl bg-cyan-400/5 blur-3xl" />
+
+            {/* Main card */}
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/60 backdrop-blur-xl">
+              {/* Top image */}
+              <div className="relative h-52 w-full overflow-hidden">
+                <Image src="/ncba.jpg" alt="NCBA office" fill sizes="420px" className="object-cover opacity-80" />
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900/80" />
+                {/* Floating badge */}
+                <div className="absolute left-4 top-4 flex items-center gap-2 rounded-xl border border-white/15 bg-black/40 px-3 py-2 backdrop-blur-md">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                  <span className="text-[11px] font-semibold text-white">System Online</span>
                 </div>
               </div>
 
-              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg">
-                <p className="text-xs tracking-[0.12em] text-cyan-100/80 uppercase">
-                  Trusted by HR Leadership
-                </p>
-                <div className="mt-2 flex items-end justify-between">
-                  <p className="text-3xl [font-family:var(--font-heading)]">99.9%</p>
-                  <p className="text-sm text-slate-200/80">Platform reliability target</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="value" className="animate-rise-delay-3 animate-rise pb-14">
-          <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl md:grid-cols-3 md:p-6">
-            {[
-              "Single source of truth for staff and positions",
-              "Scalable architecture for branch and head-office teams",
-              "Fast workflows for approvals and operational oversight",
-            ].map((item) => (
-              <div key={item} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-sm text-slate-200/90">
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="features" className="pb-16">
-          <div className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <h2 className="text-3xl [font-family:var(--font-heading)] sm:text-4xl">
-              Built for operational excellence.
-            </h2>
-            <p className="max-w-md text-sm text-slate-300/80">
-              Clear modules for structure, talent, and performance in one
-              connected NCBA experience.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {valuePoints.map((point, index) => {
-              const Icon = point.icon
-
-              return (
-                <article
-                  key={point.title}
-                  className="animate-rise rounded-3xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur-xl"
-                  style={{ animationDelay: `${220 + index * 120}ms` }}
-                >
-                  <div className="mb-4 inline-flex rounded-xl border border-cyan-200/20 bg-cyan-200/10 p-2 text-cyan-100">
-                    <Icon className="size-5" />
+              {/* Metric cards inside */}
+              <div className="grid grid-cols-2 gap-3 p-4">
+                {[
+                  { label: "Active Staff", value: "Live" },
+                  { label: "Forms Signed", value: "Digital" },
+                  { label: "Departments", value: "Tracked" },
+                  { label: "Analytics", value: "Real-time" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="rounded-xl border border-white/8 bg-white/4 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                    <p className="mt-1 text-base font-bold text-cyan-300">{value}</p>
                   </div>
-                  <h3 className="text-xl [font-family:var(--font-heading)]">
-                    {point.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-200/80">
-                    {point.description}
-                  </p>
-                </article>
-              )
-            })}
-          </div>
-        </section>
-
-        <section id="experience" className="animate-rise-delay-3 animate-rise">
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-r from-cyan-300/20 via-white/10 to-emerald-300/20 p-6 md:p-9">
-            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs tracking-[0.18em] text-cyan-100 uppercase">
-                  NCBA Product Experience
-                </p>
-                <h3 className="mt-2 max-w-xl text-2xl [font-family:var(--font-heading)] sm:text-3xl">
-                  Create a cohesive HR operating model for every team.
-                </h3>
+                ))}
               </div>
-              <Button
-                asChild
-                size="lg"
-                className="h-11 rounded-full bg-cyan-400 px-6 text-slate-950 hover:bg-cyan-300"
-              >
-                <Link href="/login">Sign In Now</Link>
-              </Button>
+
+              {/* Bottom bar */}
+              <div className="flex items-center justify-between border-t border-white/8 px-4 py-3">
+                <div className="flex -space-x-2">
+                  {["#06b6d4","#8b5cf6","#10b981","#f59e0b"].map((c, i) => (
+                    <div key={i} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-900 text-[10px] font-bold text-white" style={{ background: c }}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                  ))}
+                </div>
+                <span className="text-[11px] text-slate-400">HR team members</span>
+              </div>
+            </div>
+
+            {/* Floating pill below */}
+            <div className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-slate-900/60 px-4 py-3 backdrop-blur">
+              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <span className="text-[12px] text-slate-300">Role-based access · Admin & Staff portals</span>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
+
+      {/* ── Divider ── */}
+      <div className="mx-auto max-w-7xl px-6 lg:px-10">
+        <div className="h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
       </div>
+
+      {/* ── Features ── */}
+      <section id="features" className="mx-auto max-w-7xl px-6 py-24 lg:px-10">
+        <div className="mb-14 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-400">Platform Modules</p>
+            <h2 className="text-4xl font-bold leading-tight text-white lg:text-5xl">
+              Everything HR needs,<br />in one place.
+            </h2>
+          </div>
+          <p className="max-w-sm text-sm leading-relaxed text-slate-400 lg:text-right">
+            Purpose-built modules that work together across the full employee
+            and organizational lifecycle.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f, i) => {
+            const Icon = f.icon
+            return (
+              <div key={f.title}
+                className="group relative overflow-hidden rounded-2xl border border-white/8 bg-white/3 p-6 transition-all duration-300 hover:border-white/15 hover:bg-white/5"
+                style={{ animationDelay: `${i * 80}ms` }}>
+                {/* Hover glow */}
+                <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100"
+                  style={{ background: f.accent + "33" }} />
+                <div className="mb-4 inline-flex rounded-xl p-2.5" style={{ background: f.accent + "18", border: `1px solid ${f.accent}30` }}>
+                  <Icon className="h-5 w-5" style={{ color: f.accent }} />
+                </div>
+                <h3 className="mb-2 text-base font-bold text-white">{f.title}</h3>
+                <p className="text-sm leading-relaxed text-slate-400">{f.desc}</p>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ── Divider ── */}
+      <div className="mx-auto max-w-7xl px-6 lg:px-10">
+        <div className="h-px bg-gradient-to-r from-transparent via-white/12 to-transparent" />
+      </div>
+
+      {/* ── Analytics highlight ── */}
+      <section id="analytics" className="mx-auto max-w-7xl px-6 py-24 lg:px-10">
+        <div className="overflow-hidden rounded-3xl border border-white/8 bg-gradient-to-br from-slate-900 to-[#050810]">
+          <div className="grid lg:grid-cols-2">
+            {/* Left */}
+            <div className="flex flex-col justify-center p-10 lg:p-14">
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-400">Analytics</p>
+              <h2 className="text-3xl font-bold leading-tight text-white lg:text-4xl">
+                Insights that drive<br />better HR decisions.
+              </h2>
+              <p className="mt-4 text-sm leading-relaxed text-slate-400">
+                Interactive Recharts dashboards show headcount trends, department
+                fill rates, vacancy ratios, employee status breakdowns, and
+                6-month growth curves — all updated in real time.
+              </p>
+              <div className="mt-8 space-y-3">
+                {[
+                  "Stacked bar charts by department",
+                  "Line charts for headcount growth",
+                  "Donut charts for vacancy & status",
+                  "6 KPI cards with live counts",
+                ].map(item => (
+                  <div key={item} className="flex items-center gap-3 text-sm text-slate-300">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/20 text-violet-400 text-[10px]">✓</span>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Right — abstract chart illustration */}
+            <div className="relative hidden overflow-hidden lg:block">
+              <div className="absolute inset-0 bg-gradient-to-l from-transparent to-slate-900/50" />
+              <div className="absolute inset-0 flex items-end gap-3 p-10">
+                {[65, 45, 82, 55, 90, 70, 48, 78].map((h, i) => (
+                  <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                    <div className="w-full rounded-t-lg transition-all duration-700"
+                      style={{
+                        height: `${h * 2.2}px`,
+                        background: i % 3 === 0
+                          ? "linear-gradient(to top, #8b5cf6, #a78bfa)"
+                          : i % 3 === 1
+                          ? "linear-gradient(to top, #06b6d4, #67e8f9)"
+                          : "linear-gradient(to top, #10b981, #6ee7b7)",
+                        opacity: 0.7 + (i % 3) * 0.1,
+                      }} />
+                    <span className="text-[9px] text-slate-600">{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug"][i]}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Floating card on chart */}
+              <div className="absolute right-8 top-10 rounded-xl border border-white/10 bg-slate-900/80 p-4 backdrop-blur">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Fill Rate</p>
+                <p className="mt-1 text-2xl font-bold text-emerald-400">87%</p>
+                <p className="text-[10px] text-slate-500">↑ 4% this month</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Security ── */}
+      <section id="security" className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {[
+            {
+              icon: ShieldCheck,
+              title: "JWT Auth",
+              desc: "Secure token-based authentication with 7-day expiry and server-side validation on every request.",
+              color: "#f43f5e",
+            },
+            {
+              icon: Users,
+              title: "Role Portals",
+              desc: "Admins get the full dashboard. Staff get a clean personal portal. No cross-access, no leaks.",
+              color: "#06b6d4",
+            },
+            {
+              icon: FileText,
+              title: "Digital Signatures",
+              desc: "Canvas-based signature pads store hand-drawn signatures as base64 PNG alongside form answers.",
+              color: "#10b981",
+            },
+          ].map(({ icon: Icon, title, desc, color }) => (
+            <div key={title} className="rounded-2xl border border-white/8 bg-white/3 p-6">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border"
+                style={{ background: color + "18", borderColor: color + "35" }}>
+                <Icon className="h-5 w-5" style={{ color }} />
+              </div>
+              <h3 className="mb-2 font-bold text-white">{title}</h3>
+              <p className="text-sm leading-relaxed text-slate-400">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
+        <div className="relative overflow-hidden rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-950/40 via-slate-900 to-blue-950/40 p-12 text-center lg:p-20">
+          <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-96 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="relative">
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-400">Get Started Today</p>
+            <h2 className="mx-auto max-w-2xl text-4xl font-bold leading-tight text-white lg:text-5xl">
+              Ready to modernize<br />NCBA HR operations?
+            </h2>
+            <p className="mx-auto mt-5 max-w-md text-slate-400">
+              Sign in with your NCBA credentials and access your personalized dashboard or staff portal instantly.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+              <Link href="/login"
+                className="group inline-flex items-center gap-2.5 rounded-full bg-cyan-400 px-8 py-3.5 text-sm font-bold text-slate-950 shadow-[0_0_40px_rgba(6,182,212,0.35)] transition-all hover:bg-cyan-300">
+                Sign In to Hub
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className="border-t border-white/8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-8 text-center sm:flex-row sm:text-left lg:px-10">
+          <div className="flex items-center gap-3">
+            <div className="relative h-6 w-14 overflow-hidden rounded bg-white">
+              <Image src="/NCBA_LOGO_2.jpg" alt="NCBA" fill sizes="56px" className="object-contain" />
+            </div>
+            <span className="text-xs text-slate-500">HR Digital Hub · Rwanda</span>
+          </div>
+          <p className="text-xs text-slate-600">
+            © {new Date().getFullYear()} NCBA Rwanda. Internal platform — confidential.
+          </p>
+          <div className="flex items-center gap-5 text-xs text-slate-500">
+            <Link href="/login" className="transition hover:text-slate-300">Sign In</Link>
+            <span className="text-slate-700">·</span>
+            <span>v1.0</span>
+          </div>
+        </div>
+      </footer>
+
     </main>
   )
 }

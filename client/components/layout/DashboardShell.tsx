@@ -108,13 +108,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
           {!collapsed ? (
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="relative h-7 w-12 overflow-hidden rounded-md bg-white p-0.5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+              <div className="relative h-8 w-16 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
                 <Image
                   src="/NCBA_LOGO_2.jpg"
                   alt="NCBA"
                   fill
-                  sizes="48px"
-                  className="object-cover"
+                  sizes="64px"
+                  className="object-contain"
                   priority
                 />
               </div>
@@ -124,13 +124,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               </div>
             </div>
           ) : (
-            <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+            <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-white dark:bg-slate-100">
               <Image
                 src="/NCBA_LOGO_2.jpg"
                 alt="NCBA"
                 fill
                 sizes="32px"
-                className="object-cover"
+                className="object-contain"
               />
             </div>
           )}
@@ -166,13 +166,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       >
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="relative h-7 w-12 overflow-hidden rounded-md bg-white p-0.5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-100 dark:ring-slate-700">
+            <div className="relative h-8 w-16 shrink-0 overflow-hidden rounded-md bg-white dark:bg-slate-100">
               <Image
                 src="/NCBA_LOGO_2.jpg"
                 alt="NCBA"
                 fill
-                sizes="48px"
-                className="object-cover"
+                sizes="64px"
+                className="object-contain"
               />
             </div>
             <div className="min-w-0">

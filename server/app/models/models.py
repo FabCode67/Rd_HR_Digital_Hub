@@ -157,7 +157,7 @@ class FormField(Base):
     form_id = Column(UUID(as_uuid=True), ForeignKey("forms.id"), nullable=False)
     field_name = Column(String(255), nullable=False)
     field_label = Column(String(255), nullable=False)
-    field_type = Column(Enum(FormFieldType), nullable=False)
+    field_type = Column(String(50), nullable=False)  # stored as plain string: text, email, signature, etc.
     is_required = Column(Boolean, default=True)
     help_text = Column(Text, nullable=True)
     options = Column(Text, nullable=True)  # JSON string for select/radio options

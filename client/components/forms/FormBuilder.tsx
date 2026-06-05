@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api';
 import RichTextEditor from './RichTextEditor';
 import SignaturePad from './SignaturePad';
 import { Plus, Trash2, Save, Pen, GripVertical } from 'lucide-react';
-import type { FormField as ApiFormField } from '@/lib/types';
+import type { FormField as ApiFormField, FormFieldType } from '@/lib/types';
 
 type FormFieldDraft = Pick<
   ApiFormField,
@@ -278,7 +278,7 @@ const FormBuilder: React.FC<{ formId?: string; onFormSaved?: () => void }> = ({
                 <button
                   key={type.value}
                   type="button"
-                  onClick={() => setNewField(prev => ({ ...prev, field_type: type.value }))}
+                  onClick={() => setNewField(prev => ({ ...prev, field_type: type.value as FormFieldType }))}
                   className={`flex flex-col items-center rounded-xl border px-2 py-2.5 text-center text-xs font-medium transition-all ${
                     newField.field_type === type.value
                       ? 'border-cyan-400 bg-cyan-50 text-cyan-700 dark:border-cyan-500 dark:bg-cyan-950/40 dark:text-cyan-300'

@@ -5,9 +5,9 @@ import { apiClient } from '@/lib/api';
 import FormBuilder from './FormBuilder';
 import {
   Edit2, Trash2, Plus, UserPlus, Users, UserMinus,
-  BarChart2, X, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp,
+  BarChart2, X, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Eye, Pen, Printer,
 } from 'lucide-react';
-import type { Employee, Form } from '@/lib/types';
+import type { Employee, Form, FormField } from '@/lib/types';
 
 interface AssignedStaff {
   employee_id: string;
@@ -25,6 +25,17 @@ interface FormResponseSummary {
   created_at: string;
 }
 
+interface FormAnswer {
+  field_id: string;
+  value: string | null;
+}
+
+interface DetailedResponse {
+  answers: FormAnswer[];
+  submitted_at: string | null;
+  is_completed: boolean;
+}
+
 // ─── Inline Delete Confirm ───────────────────────────────────────────────────
 const DeleteConfirm: React.FC<{ onConfirm: () => void; onCancel: () => void }> = ({
   onConfirm,
@@ -33,20 +44,466 @@ const DeleteConfirm: React.FC<{ onConfirm: () => void; onCancel: () => void }> =
   <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-3 py-2">
     <AlertCircle size={16} className="text-red-600 dark:text-red-400 flex-shrink-0" />
     <span className="text-sm text-red-700 dark:text-red-300">Delete this form?</span>
-    <button
-      onClick={onConfirm}
-      className="ml-1 rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700"
-    >
+    <button onClick={onConfirm} className="ml-1 rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700">
       Yes, delete
     </button>
-    <button
-      onClick={onCancel}
-      className="rounded bg-gray-200 dark:bg-gray-700 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
-    >
+    <button onClick={onCancel} className="rounded bg-gray-200 dark:bg-gray-700 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600">
       Cancel
     </button>
   </div>
 );
+
+// ─── Answer value renderer ────────────────────────────────────────────────────
+function AnswerValue({ field, value }: { field: FormField; value: string | null }) {
+  if (!value || value.trim() === '') {
+    return <span className="text-xs italic text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  // Signature field — render as image
+  if (
+    field.field_type === 'signature' ||
+    field.field_name.toLowerCase().includes('sign') ||
+    field.field_label.toLowerCase().includes('sign')
+  ) {
+    if (value.startsWith('data:image')) {
+      return (
+        <div className="mt-1">
+          <img
+            src={value}
+            alt="Signature"
+            className="max-h-20 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+          />
+        </div>
+      );
+    }
+    return <span className="text-sm text-slate-700 dark:text-slate-300">{value}</span>;
+  }
+
+  // Checkbox
+  if (field.field_type === 'checkbox') {
+    return value === 'true' ? (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+        <CheckCircle2 size={13} /> Confirmed
+      </span>
+    ) : (
+      <span className="text-xs text-slate-400 dark:text-slate-500">Not confirmed</span>
+    );
+  }
+
+  return <span className="text-sm text-slate-800 dark:text-slate-200 break-words">{value}</span>;
+}
+
+// ─── Staff row with expandable answers ───────────────────────────────────────
+function StaffResponseRow({
+  staff,
+  status,
+  submittedAt,
+  form,
+}: {
+  staff: AssignedStaff;
+  status: 'completed' | 'in_progress' | 'not_started';
+  submittedAt: string | null;
+  form: Form;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [detail, setDetail]     = useState<DetailedResponse | null>(null);
+  const [error, setError]       = useState('');
+
+  const loadAnswers = async () => {
+    if (detail) { setExpanded((e) => !e); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await apiClient.form.getEmployeeFormResponse(form.id, staff.employee_id);
+      setDetail(res);
+      setExpanded(true);
+    } catch {
+      setError('Could not load answers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const printWithAnswers = async () => {
+    // Ensure answers are loaded first
+    let answers = detail?.answers;
+    if (!answers) {
+      try {
+        const res = await apiClient.form.getEmployeeFormResponse(form.id, staff.employee_id);
+        setDetail(res);
+        answers = res.answers;
+      } catch {
+        alert('Could not load answers for printing.');
+        return;
+      }
+    }
+
+    const fields = form.fields ?? [];
+    const answerMap: Record<string, string> = {};
+    answers?.forEach((a) => { if (a.value) answerMap[a.field_id] = a.value; });
+
+    const fieldRows = fields.map((f) => {
+      const value = answerMap[f.id] ?? '';
+      const isSignature = f.field_type === 'signature' || f.field_name.toLowerCase().includes('sign');
+      const isCheckbox  = f.field_type === 'checkbox';
+      const isTextarea  = f.field_type === 'textarea';
+
+      if (isSignature) {
+        return `
+          <div class="field-block">
+            <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+            ${
+              value && value.startsWith('data:image')
+                ? `<img src="${value}" class="signature-img" alt="Signature" />`
+                : `<div class="signature-box empty">No signature provided</div>`
+            }
+          </div>`;
+      }
+
+      if (isCheckbox) {
+        const checked = value === 'true';
+        return `
+          <div class="field-block checkbox-block">
+            <span class="checkbox-square${checked ? ' checked' : ''}">${checked ? '&#10003;' : ''}</span>
+            <span>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</span>
+          </div>`;
+      }
+
+      if (isTextarea) {
+        return `
+          <div class="field-block">
+            <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+            <div class="textarea-filled">${value || '<span class="empty-val">—</span>'}</div>
+          </div>`;
+      }
+
+      return `
+        <div class="field-block">
+          <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+          <div class="input-filled">${value || '<span class="empty-val">—</span>'}</div>
+        </div>`;
+    }).join('');
+
+    const description = form.description ?? '';
+    const submittedDate = submittedAt ? new Date(submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${form.name} — ${staff.employee_name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif;
+      font-size: 12pt;
+      color: #111;
+      background: #fff;
+      padding: 40px 60px;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+    .org-name {
+      font-size: 9.5pt;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    .form-title {
+      font-size: 15pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-meta {
+      margin-top: 5px;
+      font-size: 9pt;
+      color: #666;
+    }
+    /* Staff info box */
+    .staff-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 24px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      background: #f9f9f9;
+    }
+    .staff-info-item { font-size: 10pt; }
+    .staff-info-item .si-label {
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #777;
+      margin-bottom: 2px;
+    }
+    .staff-info-item .si-value { font-weight: bold; color: #111; }
+    /* Description */
+    .description {
+      margin-bottom: 20px;
+      font-size: 10.5pt;
+      line-height: 1.7;
+      color: #333;
+      border-left: 3px solid #bbb;
+      padding-left: 14px;
+    }
+    /* Fields */
+    .fields-section h3 {
+      font-size: 10.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #999;
+      padding-bottom: 4px;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    .field-block { margin-bottom: 18px; }
+    label {
+      display: block;
+      font-size: 9.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    .req { color: #c00; }
+    .input-filled {
+      border-bottom: 1px solid #999;
+      padding: 4px 0;
+      min-height: 26px;
+      font-size: 11pt;
+      color: #111;
+    }
+    .textarea-filled {
+      border: 1px solid #999;
+      border-radius: 2px;
+      padding: 8px;
+      min-height: 70px;
+      font-size: 11pt;
+      color: #111;
+      white-space: pre-wrap;
+    }
+    .empty-val { color: #bbb; font-style: italic; }
+    .signature-img {
+      max-height: 80px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: #fff;
+      padding: 4px;
+    }
+    .signature-box {
+      border: 1px dashed #bbb;
+      border-radius: 2px;
+      height: 64px;
+      width: 55%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      font-size: 9.5pt;
+      font-style: italic;
+    }
+    .checkbox-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .checkbox-square {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid #555;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12pt;
+      line-height: 1;
+    }
+    .checkbox-square.checked { border-color: #111; color: #111; }
+    /* Footer */
+    .footer {
+      margin-top: 40px;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+      font-size: 8.5pt;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }
+    .submitted-stamp {
+      margin-top: 32px;
+      border: 1.5px solid #555;
+      border-radius: 4px;
+      display: inline-block;
+      padding: 8px 16px;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #333;
+    }
+    @media print {
+      body { padding: 20px 36px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="org-name">NCBA Rwanda — Human Resources</div>
+    <div class="form-title">${form.name}</div>
+    <div class="form-meta">Ref: HR / ${new Date().getFullYear()}</div>
+  </div>
+
+  <div class="staff-info">
+    <div class="staff-info-item">
+      <div class="si-label">Staff Member</div>
+      <div class="si-value">${staff.employee_name}</div>
+    </div>
+    <div class="staff-info-item">
+      <div class="si-label">Email</div>
+      <div class="si-value">${staff.employee_email}</div>
+    </div>
+    <div class="staff-info-item">
+      <div class="si-label">Date Submitted</div>
+      <div class="si-value">${submittedDate}</div>
+    </div>
+    <div class="staff-info-item">
+      <div class="si-label">Status</div>
+      <div class="si-value">Completed</div>
+    </div>
+  </div>
+
+  ${description ? `<div class="description">${description.replace(/<script[^>]*>.*?<\/script>/gi, '')}</div>` : ''}
+
+  ${fields.length > 0 ? `
+  <div class="fields-section">
+    <h3>Submitted Answers</h3>
+    ${fieldRows}
+  </div>` : '<p style="color:#999;font-style:italic;font-size:10pt">This form had no fields.</p>'}
+
+  <div class="submitted-stamp">&#10003; Submitted — ${submittedDate}</div>
+
+  <div class="footer">
+    <span>NCBA Rwanda — Confidential HR Document</span>
+    <span>Printed: ${new Date().toLocaleString()}</span>
+  </div>
+
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=920,height=720');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  const statusCls =
+    status === 'completed'
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+      : status === 'in_progress'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400';
+
+  const fields = form.fields ?? [];
+
+  return (
+    <li className="rounded-xl border border-violet-100 dark:border-violet-800/50 bg-white dark:bg-slate-800/50 overflow-hidden">
+      {/* Row header */}
+      <div className="flex items-center justify-between px-3 py-2.5 gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{staff.employee_name}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{staff.employee_email}</p>
+          {submittedAt && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Submitted {new Date(submittedAt).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusCls}`}>
+            {status === 'completed' && <CheckCircle2 size={11} />}
+            {status === 'in_progress' && <Clock size={11} />}
+            {status === 'not_started' && <AlertCircle size={11} />}
+            {status === 'completed' ? 'Completed' : status === 'in_progress' ? 'In progress' : 'Not started'}
+          </span>
+
+          {status === 'completed' && (
+            <>
+              {/* View answers */}
+              <button
+                onClick={loadAnswers}
+                className="inline-flex items-center gap-1 rounded-lg border border-violet-200 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20 px-2 py-1 text-xs font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
+              >
+                {loading ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                ) : expanded ? (
+                  <ChevronUp size={12} />
+                ) : (
+                  <Eye size={12} />
+                )}
+                {expanded ? 'Hide' : 'View'}
+              </button>
+
+              {/* Print with answers */}
+              <button
+                onClick={printWithAnswers}
+                title="Print completed form"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <Printer size={12} />
+                Print
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded answers */}
+      {expanded && detail && (
+        <div className="border-t border-violet-100 dark:border-violet-800/40 bg-slate-50 dark:bg-slate-900/60 px-4 py-4 space-y-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400">
+            Submitted answers
+          </p>
+          {fields.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">No fields defined for this form.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {fields.map((field) => {
+                const answer = detail.answers.find((a) => a.field_id === field.id);
+                return (
+                  <div key={field.id} className="space-y-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      {field.field_type === 'signature' || field.field_name.toLowerCase().includes('sign') ? (
+                        <Pen size={10} className="shrink-0" />
+                      ) : null}
+                      {field.field_label}
+                      {field.is_required && <span className="text-red-400">*</span>}
+                    </p>
+                    <AnswerValue field={field} value={answer?.value ?? null} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p className="px-3 pb-2 text-xs text-red-500 dark:text-red-400">{error}</p>
+      )}
+    </li>
+  );
+}
 
 // ─── Progress Tracker Panel ───────────────────────────────────────────────────
 const ProgressPanel: React.FC<{
@@ -56,28 +513,24 @@ const ProgressPanel: React.FC<{
   isLoading: boolean;
 }> = ({ form, assignedStaff, responses, isLoading }) => {
   const totalAssigned = assignedStaff.length;
-  const completed = responses.filter((r) => r.is_completed).length;
-  const inProgress = responses.filter((r) => !r.is_completed).length;
-  const notStarted = Math.max(0, totalAssigned - responses.length);
-  const pct = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
+  const completed     = responses.filter((r) => r.is_completed).length;
+  const inProgress    = responses.filter((r) => !r.is_completed).length;
+  const notStarted    = Math.max(0, totalAssigned - responses.length);
+  const pct           = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
 
-  const getStatusForStaff = (employeeId: string) => {
+  const getStatus = (employeeId: string): 'completed' | 'in_progress' | 'not_started' => {
     const r = responses.find((res) => res.employee_id === employeeId);
     if (!r) return 'not_started';
     return r.is_completed ? 'completed' : 'in_progress';
   };
 
-  const getSubmittedAt = (employeeId: string) => {
-    const r = responses.find((res) => res.employee_id === employeeId);
-    return r?.submitted_at ?? null;
-  };
+  const getSubmittedAt = (employeeId: string) =>
+    responses.find((r) => r.employee_id === employeeId)?.submitted_at ?? null;
 
   return (
-    <div className="mt-4 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-4 space-y-4">
-      {/* Header */}
+    <div className="mt-4 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-4 space-y-4">
       <div className="flex items-center gap-2 font-semibold text-violet-900 dark:text-violet-200">
-        <BarChart2 size={16} />
-        Completion Progress
+        <BarChart2 size={16} /> Completion Progress
       </div>
 
       {isLoading ? (
@@ -91,10 +544,7 @@ const ProgressPanel: React.FC<{
               <span className="font-semibold text-violet-700 dark:text-violet-300">{pct}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-violet-500 transition-all duration-500"
-                style={{ width: `${pct}%` }}
-              />
+              <div className="h-full rounded-full bg-violet-500 transition-all duration-500" style={{ width: `${pct}%` }} />
             </div>
             <div className="flex gap-4 text-xs pt-1">
               <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
@@ -109,47 +559,20 @@ const ProgressPanel: React.FC<{
             </div>
           </div>
 
-          {/* Per-staff breakdown */}
+          {/* Per-staff rows */}
           {assignedStaff.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">No staff assigned yet.</p>
           ) : (
             <ul className="space-y-2">
-              {assignedStaff.map((s) => {
-                const status = getStatusForStaff(s.employee_id);
-                const submittedAt = getSubmittedAt(s.employee_id);
-                return (
-                  <li
-                    key={s.employee_id}
-                    className="flex items-center justify-between rounded-md border border-violet-100 dark:border-violet-800/50 bg-white dark:bg-gray-800/50 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {s.employee_name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{s.employee_email}</p>
-                      {submittedAt && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                          Submitted {new Date(submittedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <span
-                      className={`ml-3 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold flex-shrink-0 ${
-                        status === 'completed'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                          : status === 'in_progress'
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                          : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
-                      }`}
-                    >
-                      {status === 'completed' && <CheckCircle2 size={11} />}
-                      {status === 'in_progress' && <Clock size={11} />}
-                      {status === 'not_started' && <AlertCircle size={11} />}
-                      {status === 'completed' ? 'Completed' : status === 'in_progress' ? 'In progress' : 'Not started'}
-                    </span>
-                  </li>
-                );
-              })}
+              {assignedStaff.map((s) => (
+                <StaffResponseRow
+                  key={s.employee_id}
+                  staff={s}
+                  status={getStatus(s.employee_id)}
+                  submittedAt={getSubmittedAt(s.employee_id)}
+                  form={form}
+                />
+              ))}
             </ul>
           )}
         </>
@@ -168,6 +591,7 @@ const FormManagement: React.FC = () => {
   const [selectedEmployeeByForm, setSelectedEmployeeByForm] = useState<Record<string, string>>({});
   const [assignedStaffByForm, setAssignedStaffByForm] = useState<Record<string, AssignedStaff[]>>({});
   const [responsesByForm, setResponsesByForm] = useState<Record<string, FormResponseSummary[]>>({});
+  const [fullFormById, setFullFormById] = useState<Record<string, Form>>({});
   const [isAssigningByForm, setIsAssigningByForm] = useState<Record<string, boolean>>({});
   const [isLoadingAssignedByForm, setIsLoadingAssignedByForm] = useState<Record<string, boolean>>({});
   const [isLoadingProgressByForm, setIsLoadingProgressByForm] = useState<Record<string, boolean>>({});
@@ -242,11 +666,13 @@ const FormManagement: React.FC = () => {
   const loadProgressData = async (formId: string) => {
     setIsLoadingProgressByForm((p) => ({ ...p, [formId]: true }));
     try {
-      // Ensure we have assigned staff first
-      if (!assignedStaffByForm[formId]) {
-        await loadAssignedStaff(formId);
-      }
-      const responses = await apiClient.form.getFormResponses(formId);
+      // Fetch assigned staff, full form detail (with fields), and responses in parallel
+      const [, fullForm, responses] = await Promise.all([
+        assignedStaffByForm[formId] ? Promise.resolve() : loadAssignedStaff(formId),
+        apiClient.form.getById(formId),
+        apiClient.form.getFormResponses(formId),
+      ]);
+      setFullFormById((p) => ({ ...p, [formId]: fullForm }));
       setResponsesByForm((p) => ({ ...p, [formId]: (responses || []) as FormResponseSummary[] }));
     } catch {
       showToast('error', 'Failed to load progress data');
@@ -326,6 +752,201 @@ const FormManagement: React.FC = () => {
     loadForms();
     setSelectedFormId(null);
     setIsCreating(false);
+  };
+
+  const printFormPage = async (form: Form) => {
+    // Fetch full form if fields not loaded yet
+    let fullForm = form;
+    if (!form.fields || form.fields.length === 0) {
+      try { fullForm = await apiClient.form.getById(form.id); } catch {}
+    }
+
+    const fields = fullForm.fields ?? [];
+    const description = fullForm.description ?? '';
+
+    const fieldRows = fields.map((f) => {
+      const isSignature = f.field_type === 'signature' || f.field_name.toLowerCase().includes('sign');
+      const isCheckbox  = f.field_type === 'checkbox';
+      const isTextarea  = f.field_type === 'textarea';
+
+      if (isSignature) {
+        return `
+          <div class="field-block">
+            <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+            <div class="signature-box">Sign here</div>
+          </div>`;
+      }
+      if (isCheckbox) {
+        return `
+          <div class="field-block checkbox-block">
+            <span class="checkbox-square"></span>
+            <span>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</span>
+          </div>`;
+      }
+      if (isTextarea) {
+        return `
+          <div class="field-block">
+            <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+            <div class="text-area-box"></div>
+          </div>`;
+      }
+      return `
+        <div class="field-block">
+          <label>${f.field_label}${f.is_required ? ' <span class="req">*</span>' : ''}</label>
+          <div class="input-line"></div>
+        </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${fullForm.name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif;
+      font-size: 12pt;
+      color: #111;
+      background: #fff;
+      padding: 40px 60px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .org-name {
+      font-size: 10pt;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 6px;
+    }
+    .form-title {
+      font-size: 16pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .form-meta {
+      margin-top: 6px;
+      font-size: 9pt;
+      color: #777;
+    }
+    .description {
+      margin-bottom: 24px;
+      font-size: 10.5pt;
+      line-height: 1.7;
+      color: #222;
+      border-left: 3px solid #ccc;
+      padding-left: 14px;
+    }
+    .description p { margin-bottom: 8px; }
+    .fields-section h3 {
+      font-size: 11pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #aaa;
+      padding-bottom: 4px;
+      margin-bottom: 16px;
+      color: #333;
+    }
+    .field-block {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-size: 10pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #444;
+      margin-bottom: 6px;
+    }
+    .req { color: #c00; font-weight: bold; }
+    .input-line {
+      border-bottom: 1px solid #333;
+      height: 28px;
+      width: 100%;
+    }
+    .text-area-box {
+      border: 1px solid #333;
+      height: 80px;
+      width: 100%;
+      border-radius: 2px;
+    }
+    .signature-box {
+      border: 1px solid #333;
+      border-radius: 2px;
+      height: 72px;
+      width: 60%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      font-size: 10pt;
+      font-style: italic;
+      letter-spacing: 0.05em;
+    }
+    .checkbox-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .checkbox-square {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid #333;
+      margin-top: 2px;
+    }
+    .footer {
+      margin-top: 48px;
+      border-top: 1px solid #ccc;
+      padding-top: 12px;
+      font-size: 9pt;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }
+    @media print {
+      body { padding: 20px 40px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="org-name">NCBA Rwanda — Human Resources</div>
+    <div class="form-title">${fullForm.name}</div>
+    <div class="form-meta">Ref: HR / ${new Date().getFullYear()} &nbsp;|&nbsp; Date: ___________________</div>
+  </div>
+
+  ${description ? `<div class="description">${description.replace(/<[^>]*>/g, (m) => m)}</div>` : ''}
+
+  ${fields.length > 0 ? `
+  <div class="fields-section">
+    <h3>To be completed by staff member</h3>
+    ${fieldRows}
+  </div>` : ''}
+
+  <div class="footer">
+    <span>NCBA Rwanda — Confidential</span>
+    <span>Page 1 of 1</span>
+  </div>
+
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
   };
 
   // ── FormBuilder view ────────────────────────────────────────────────────────
@@ -415,7 +1036,14 @@ const FormManagement: React.FC = () => {
                 </div>
 
                 <div className="ml-4 flex gap-2 flex-shrink-0">
-                  {/* Progress button */}
+                  {/* Print button */}
+                  <button
+                    onClick={() => printFormPage(fullFormById[form.id] ?? form)}
+                    className="rounded-md bg-slate-100 dark:bg-slate-700 p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                    title="Print blank form"
+                  >
+                    <Printer size={18} />
+                  </button>
                   <button
                     onClick={() => toggleProgressPanel(form.id)}
                     className={`rounded-md p-2 ${
@@ -471,7 +1099,7 @@ const FormManagement: React.FC = () => {
               {/* Progress panel */}
               {progressFormId === form.id && (
                 <ProgressPanel
-                  form={form}
+                  form={fullFormById[form.id] ?? form}
                   assignedStaff={assignedStaffByForm[form.id] || []}
                   responses={responsesByForm[form.id] || []}
                   isLoading={isLoadingProgressByForm[form.id] || false}

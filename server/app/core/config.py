@@ -25,13 +25,15 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list = [
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:8000",
+        "http://127.0.0.1:8000",
         "http://localhost:8080",
         "https://rd-hr-digital-hub.vercel.app",
     ]
-    CORS_ALLOW_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
+    CORS_ALLOW_ORIGIN_REGEX: Optional[str] = None
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: list = ["*"]
+    CORS_ALLOW_METHODS: list = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     CORS_ALLOW_HEADERS: list = ["*"]
     
     # API

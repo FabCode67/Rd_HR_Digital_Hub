@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, date
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, validator
-from app.models import EmployeeStatus, FormFieldType, UserRole
+from app.models import EmployeeStatus, UserRole
 
 
 # ============================================================================
@@ -207,7 +207,7 @@ class FormFieldBase(BaseModel):
     """Base schema for FormField."""
     field_name: str
     field_label: str
-    field_type: FormFieldType
+    field_type: str  # plain string: text, email, signature, textarea, checkbox, etc.
     is_required: bool = True
     help_text: Optional[str] = None
     options: Optional[str] = None  # JSON string
