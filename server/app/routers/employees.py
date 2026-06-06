@@ -1,7 +1,7 @@
 """
 Employee API routes.
 """
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -29,18 +29,59 @@ def create_employee(
     admin=Depends(require_admin)
 ):
     """Create a new employee."""
-    # Check if email already exists
     existing = EmployeeService.get_by_email(db, employee.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-
-    # Set default password for new employees
     emp_data = employee.dict()
-    default_password = "NCBAStaff@123"
-    emp_data["hashed_password"] = auth_service.get_password_hash(default_password)
-    
+    emp_data["hashed_password"] = auth_service.get_password_hash("NCBAStaff@123")
     return EmployeeService.create(db, emp_data)
 
+
+# ── Fixed-path routes MUST come before /{employee_id} ──────────────────────────
+
+@router.get("/stats", dependencies=[Depends(require_admin)])
+def get_employee_stats(db: Session = Depends(get_db)):
+    """Return employee summary stats in one query."""
+    from sqlalchemy import func
+    rows = db.query(Employee.status, func.count(Employee.id)).group_by(Employee.status).all()
+    counts = {str(r[0].value if hasattr(r[0], 'value') else r[0]): r[1] for r in rows}
+    total = sum(counts.values())
+    return {
+        "total":      total,
+        "active":     counts.get("ACTIVE", 0),
+        "inactive":   counts.get("INACTIVE", 0),
+        "suspended":  counts.get("SUSPENDED", 0),
+        "terminated": counts.get("TERMINATED", 0),
+    }
+
+
+
+
+# ── Collection endpoints ────────────────────────────────────────────────────────
+
+@router.get("", response_model=List[EmployeeResponse])
+def list_employees(
+    status: EmployeeStatus = Query(None),
+    search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin)
+):
+    """List employees with optional status filter and search."""
+    q = db.query(Employee)
+    if status:
+        q = q.filter(Employee.status == status)
+    if search:
+        term = f"%{search}%"
+        q = q.filter(
+            (Employee.full_name.ilike(term)) |
+            (Employee.email.ilike(term))
+        )
+    return q.order_by(Employee.full_name).offset(skip).limit(limit).all()
+
+
+# ── /{employee_id} routes LAST ──────────────────────────────────────────────────
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 def get_employee(
@@ -52,27 +93,10 @@ def get_employee(
     employee = EmployeeService.get_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-
-    # Allow access if requester is admin or requesting their own profile
     from app.models import UserRole
     if current_user.role != UserRole.ADMIN and current_user.id != employee.id:
         raise HTTPException(status_code=403, detail="Forbidden")
-
     return employee
-
-
-@router.get("", response_model=List[EmployeeResponse])
-def list_employees(
-    status: EmployeeStatus = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db),
-    admin=Depends(require_admin)
-):
-    """List employees with optional status filter."""
-    if status:
-        return EmployeeService.get_by_status(db, status, skip=skip, limit=limit)
-    return EmployeeService.get_all(db, skip=skip, limit=limit)
 
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)

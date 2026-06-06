@@ -1,155 +1,126 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { apiClient } from "@/lib/api";
-import {
-  Department,
-  Position,
-  PositionCreateInput,
-  PositionUpdateInput,
-  PositionLevel,
-} from "@/lib/types";
-import PositionNode from "@/components/org-tree/PositionNode";
+import { Department, Position, PositionCreateInput, PositionUpdateInput, PositionLevel } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Loader2, Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Search, X, BriefcaseBusiness, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
 
-type FormState = {
-  title: string;
-  description: string;
-  department_id: string;
-  parent_position_id: string;
-  level: PositionLevel;
-  band: string;
-  is_active: boolean;
+type Stats = { total: number; filled: number; vacant: number; fill_rate: number };
+type FormState = { title: string; description: string; department_id: string; parent_position_id: string; level: PositionLevel; band: string; is_active: boolean };
+
+const LEVELS: PositionLevel[] = ["Director","Head","Manager","Senior Manager","Assistant Manager","Officer","Graduate Trainee","Intern"];
+const emptyForm: FormState = { title: "", description: "", department_id: "", parent_position_id: "", level: "Officer", band: "", is_active: true };
+
+const LEVEL_COLORS: Record<string, string> = {
+  Director: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  Head: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  Manager: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  "Senior Manager": "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+  "Assistant Manager": "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  Officer: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  "Graduate Trainee": "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  Intern: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 
-const POSITION_LEVELS: PositionLevel[] = [
-  "Director",
-  "Head",
-  "Manager",
-  "Senior Manager",
-  "Assistant Manager",
-  "Officer",
-  "Graduate Trainee",
-  "Intern",
-];
-
-const emptyForm: FormState = {
-  title: "",
-  description: "",
-  department_id: "",
-  parent_position_id: "",
-  level: "Officer",
-  band: "",
-  is_active: true,
-};
+function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
+  return (
+    <div className={cn("rounded-xl border px-4 py-3", color)}>
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="text-xs font-semibold opacity-80">{label}</p>
+      {sub && <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>}
+    </div>
+  );
+}
 
 export default function PositionManagement() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [vacantFilter, setVacantFilter] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [treeOpen, setTreeOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Position | null>(null);
   const [deleting, setDeleting] = useState(false);
   const toast = useToast();
 
-  const rootPositions = useMemo(
-    () => positions.filter((position) => !position.parent_position_id),
-    [positions]
-  );
+  const filtered = useMemo(() => {
+    let list = positions;
+    if (deptFilter) list = list.filter(p => p.department_id === deptFilter);
+    if (vacantFilter) list = list.filter(p => p.is_vacant);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(p => p.title.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
+    }
+    return list;
+  }, [positions, search, deptFilter, vacantFilter]);
 
-  const loadData = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const [positionsData, departmentsData] = await Promise.all([
-        apiClient.position.getAll(undefined, 0, 100),
-        apiClient.department.getAll(0, 100),
+      const [pos, depts, s] = await Promise.all([
+        apiClient.position.getAll(undefined, 0, 500),
+        apiClient.department.getAll(0, 200),
+        apiClient.position.getStats(),
       ]);
-      setPositions(positionsData);
-      setDepartments(departmentsData);
+      setPositions(pos);
+      setDepartments(depts);
+      setStats(s);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      toast.error("Load failed", err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadData();
   }, []);
 
-  const resetForm = () => {
-    setForm(emptyForm);
-    setEditingId(null);
-  };
+  useEffect(() => { void load(); }, [load]);
 
-  const startEdit = (position: Position) => {
-    setEditingId(position.id);
-    setForm({
-      title: position.title,
-      description: position.description ?? "",
-      department_id: position.department_id,
-      parent_position_id: position.parent_position_id ?? "",
-      level: position.level,
-      band: position.band ?? "",
-      is_active: position.is_active,
-    });
+  const openNew = () => { setForm(emptyForm); setEditingId(null); setDrawerOpen(true); };
+  const openEdit = (p: Position) => {
+    setForm({ title: p.title, description: p.description ?? "", department_id: p.department_id, parent_position_id: p.parent_position_id ?? "", level: p.level, band: p.band ?? "", is_active: p.is_active });
+    setEditingId(p.id);
+    setDrawerOpen(true);
   };
+  const closeDrawer = () => { setDrawerOpen(false); setEditingId(null); setForm(emptyForm); };
 
-  const submitForm = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.department_id) { toast.error("Validation", "Please select a department."); return; }
     setSaving(true);
-    setError(null);
-
-    const payload: PositionCreateInput | PositionUpdateInput = {
-      title: form.title.trim(),
-      description: form.description.trim() || undefined,
-      department_id: form.department_id,
-      parent_position_id: form.parent_position_id || null,
-      level: form.level,
-      band: form.band.trim() || undefined,
-      is_active: form.is_active,
-    };
-
+    const payload = { title: form.title.trim(), description: form.description.trim() || undefined, department_id: form.department_id, parent_position_id: form.parent_position_id || null, level: form.level, band: form.band.trim() || undefined, is_active: form.is_active };
     try {
       if (editingId) {
-        await apiClient.position.update(editingId, payload);
-        toast.success("Position updated", `"${form.title}" has been updated.`);
+        await apiClient.position.update(editingId, payload as PositionUpdateInput);
+        toast.success("Position updated", `"${form.title}" updated.`);
       } else {
         await apiClient.position.create(payload as PositionCreateInput);
-        toast.success("Position created", `"${form.title}" has been added.`);
+        toast.success("Position created", `"${form.title}" added.`);
       }
-      await loadData();
-      resetForm();
+      await load();
+      closeDrawer();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save position";
-      setError(msg);
-      toast.error("Save failed", msg);
+      toast.error("Save failed", err instanceof Error ? err.message : "Failed");
     } finally {
       setSaving(false);
     }
   };
 
-  const deletePosition = async () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    setError(null);
     try {
       await apiClient.position.delete(deleteTarget.id);
-      toast.success("Position deleted", `"${deleteTarget.title}" has been removed.`);
-      await loadData();
-      if (editingId === deleteTarget.id) resetForm();
+      toast.success("Deleted", `"${deleteTarget.title}" removed.`);
+      await load();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to delete position";
-      setError(msg);
-      toast.error("Delete failed", msg);
+      toast.error("Delete failed", err instanceof Error ? err.message : "Failed");
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
@@ -157,332 +128,180 @@ export default function PositionManagement() {
   };
 
   return (
-    <section className="space-y-4 min-w-0">
+    <section className="min-w-0 space-y-5">
       <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
-      <div className="flex items-center justify-between gap-3">
+
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Positions</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Create, edit, and organize positions</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Positions</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Manage all roles and position hierarchy</p>
         </div>
-        <button
-          type="button"
-          onClick={resetForm}
-          className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-        >
-          <Plus className="h-4 w-4" />
-          New
+        <button onClick={openNew}
+          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 transition-colors shadow-sm">
+          <Plus className="h-4 w-4" /> New Position
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-          {error}
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Total" value={stats.total} color="border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100" />
+          <StatCard label="Filled" value={stats.filled} color="border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200" />
+          <StatCard label="Vacant" value={stats.vacant} color="border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200" />
+          <StatCard label="Fill Rate" value={`${stats.fill_rate}%`} color="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-200" />
         </div>
       )}
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] min-w-0">
-        <div className="space-y-4 min-w-0">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <form onSubmit={submitForm} className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">Title</span>
-                  <input
-                    value={form.title}
-                    onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                    className="field"
-                    placeholder="Position title"
-                    required
-                  />
-                </label>
-
-                <label className="space-y-1 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">Department</span>
-                  <select
-                    value={form.department_id}
-                    onChange={(event) => setForm((current) => ({ ...current, department_id: event.target.value }))}
-                    className="field"
-                    required
-                  >
-                    <option value="">Select department</option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">Level</span>
-                  <select
-                    value={form.level}
-                    onChange={(event) => setForm((current) => ({ ...current, level: event.target.value as PositionLevel }))}
-                    className="field"
-                    required
-                  >
-                    {POSITION_LEVELS.map((level) => (
-                      <option key={level} value={level}>{level}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-1 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">Parent Position</span>
-                  <select
-                    value={form.parent_position_id}
-                    onChange={(event) => setForm((current) => ({ ...current, parent_position_id: event.target.value }))}
-                    className="field"
-                  >
-                    <option value="">No parent</option>
-                    {positions
-                      .filter((position) => position.id !== editingId)
-                      .map((position) => (
-                        <option key={position.id} value={position.id}>
-                          {position.title}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="text-slate-600 dark:text-slate-300">Band</span>
-                  <input
-                    value={form.band}
-                    onChange={(event) => setForm((current) => ({ ...current, band: event.target.value }))}
-                    className="field"
-                    placeholder="e.g., A1, B2"
-                  />
-                </label>
-
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={form.is_active}
-                    onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))}
-                  />
-                  Active
-                </label>
-              </div>
-
-              <label className="block space-y-1 text-sm">
-                <span className="text-slate-600 dark:text-slate-300">Description</span>
-                <textarea
-                  value={form.description}
-                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                  className="field min-h-20"
-                  placeholder="Short description"
-                />
-              </label>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={saving || loading}
-                  className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {editingId ? "Update" : "Create"}
-                </button>
-                {editingId && (
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <div className="border-b border-slate-200 px-4 py-3 text-sm font-medium dark:border-slate-800">
-              All positions
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-8 text-sm text-slate-500">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading
-              </div>
-            ) : positions.length > 0 ? (
-              <>
-                {/* Mobile Card View */}
-                <div className="block md:hidden divide-y divide-slate-200 dark:divide-slate-800">
-                  {positions.map((position) => (
-                    <div
-                      key={position.id}
-                      className={cn("p-4 space-y-2", position.is_active ? "" : "opacity-60")}
-                    >
-                      <div className="space-y-1">
-                        <p className="font-medium text-slate-900 dark:text-slate-100">{position.title}</p>
-                        <p className="text-xs text-slate-600 dark:text-slate-400">
-                          {departments.find((dept) => dept.id === position.department_id)?.name ?? "Unknown"}
-                        </p>
-                        {position.description && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{position.description}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-600 dark:text-slate-400">{position.level}</span>
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-1 text-xs font-medium",
-                            position.is_active
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                          )}
-                        >
-                          {position.is_active ? "Active" : "Inactive"}
-                        </span>
-                      </div>
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(position)}
-                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(position)}
-                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-                    <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-950/40 dark:text-slate-400">
-                      <tr>
-                        <th className="px-4 py-3 font-medium">Title</th>
-                        <th className="px-4 py-3 font-medium">Department</th>
-                        <th className="px-4 py-3 font-medium">Level</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {positions.map((position) => (
-                        <tr key={position.id} className={cn(position.is_active ? "" : "opacity-60")}>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-slate-900 dark:text-slate-100">{position.title}</div>
-                            {position.description && (
-                              <div className="text-xs text-slate-500 dark:text-slate-400">{position.description}</div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                            {departments.find((dept) => dept.id === position.department_id)?.name ?? "Unknown"}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                            {position.level}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-1 text-xs font-medium",
-                                position.is_active
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                              )}
-                            >
-                              {position.is_active ? "Active" : "Inactive"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => startEdit(position)}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                              >
-                                <Pencil className="h-3.5 w-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget(position)}
-                                className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            ) : (
-              <div className="px-4 py-8 text-sm text-slate-500">No positions found.</div>
-            )}
-          </div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search positions…" className="field pl-9 pr-9" />
+          {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
         </div>
-
-        <div
-          className={cn(
-            "space-y-4 rounded-lg border border-slate-200 bg-white p-4 transition-all duration-200 dark:border-slate-800 dark:bg-slate-900",
-            treeOpen ? "lg:w-[420px]" : "lg:w-14 lg:px-2 lg:py-4"
-          )}
-        >
-          <button
-            type="button"
-            onClick={() => setTreeOpen((value) => !value)}
-            aria-expanded={treeOpen}
-            aria-controls="position-hierarchy-panel"
-            className={cn(
-              "flex w-full items-center justify-between rounded-md text-left text-sm font-medium transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60",
-              treeOpen ? "px-1 py-1" : "h-full min-h-[180px] flex-col justify-center gap-3 px-0 py-2"
-            )}
-          >
-            <span className={cn("flex items-center gap-2", !treeOpen && "flex-col gap-2") }>
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {treeOpen ? "−" : "+"}
-              </span>
-              <span style={!treeOpen ? { writingMode: "vertical-rl", transform: "rotate(180deg)" } : undefined}>
-                Hierarchy
-              </span>
-            </span>
-            {treeOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-
-          {treeOpen && (
-            <div id="position-hierarchy-panel" className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-              {rootPositions.length > 0 ? (
-                rootPositions.map((position) => (
-                  <PositionNode
-                    key={position.id}
-                    node={{ ...position, children: [] } as any}
-                    level={0}
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-slate-500">No root positions to show.</p>
-              )}
-            </div>
-          )}
-        </div>
+        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="field w-48">
+          <option value="">All departments</option>
+          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <button onClick={() => setVacantFilter(v => !v)}
+          className={cn("inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
+            vacantFilter ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300")}>
+          <AlertCircle className="h-3.5 w-3.5" /> Vacant only
+        </button>
       </div>
 
-      <DeleteModal
-        open={!!deleteTarget}
-        title="Delete Position"
-        itemName={deleteTarget?.title ?? ""}
-        loading={deleting}
-        onConfirm={() => void deletePosition()}
-        onCancel={() => setDeleteTarget(null)}
-      />
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-800">
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {filtered.length} position{filtered.length !== 1 ? "s" : ""}
+            {(deptFilter || vacantFilter || search) && <span className="ml-1 text-slate-400 font-normal">(filtered)</span>}
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-14 text-center text-sm text-slate-400">No positions match your filters.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
+              <thead className="bg-slate-50 dark:bg-slate-950/40">
+                <tr>
+                  {["Title", "Department", "Level", "Band", "Vacancy", "Actions"].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filtered.map(pos => (
+                  <tr key={pos.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="font-medium text-slate-900 dark:text-slate-100">{pos.title}</div>
+                      {pos.description && <div className="mt-0.5 text-xs text-slate-400 line-clamp-1">{pos.description}</div>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
+                      {departments.find(d => d.id === pos.department_id)?.name ?? "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", LEVEL_COLORS[pos.level] ?? LEVEL_COLORS.Officer)}>
+                        {pos.level}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{pos.band || "—"}</td>
+                    <td className="px-5 py-3">
+                      {pos.is_vacant
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"><AlertCircle className="h-3 w-3" /> Vacant</span>
+                        : <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"><CheckCircle2 className="h-3 w-3" /> Filled</span>}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(pos)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+                          <Pencil className="h-3 w-3" /> Edit
+                        </button>
+                        <button onClick={() => setDeleteTarget(pos)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400 transition-colors">
+                          <Trash2 className="h-3 w-3" /> Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Drawer */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={closeDrawer}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl flex flex-col h-full" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{editingId ? "Edit Position" : "New Position"}</h2>
+              <button onClick={closeDrawer} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={submit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Title <span className="text-red-500">*</span></label>
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="field" placeholder="Position title" required />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Department <span className="text-red-500">*</span></label>
+                  <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))} className="field" required>
+                    <option value="">Select</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Level</label>
+                  <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value as PositionLevel }))} className="field">
+                    {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Band</label>
+                  <input value={form.band} onChange={e => setForm(f => ({ ...f, band: e.target.value }))} className="field" placeholder="e.g. A1, B2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Parent Position</label>
+                  <select value={form.parent_position_id} onChange={e => setForm(f => ({ ...f, parent_position_id: e.target.value }))} className="field">
+                    <option value="">None</option>
+                    {positions.filter(p => p.id !== editingId).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description</label>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="field min-h-20" placeholder="Optional description" />
+              </div>
+              <label className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-cyan-600" />
+                Active
+              </label>
+            </form>
+            <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex gap-3">
+              <button onClick={closeDrawer} className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+              <button type="submit" onClick={submit} disabled={saving || !form.title.trim()}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {editingId ? "Update" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DeleteModal open={!!deleteTarget} title="Delete Position" itemName={deleteTarget?.title ?? ""}
+        loading={deleting} onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />
     </section>
   );
 }

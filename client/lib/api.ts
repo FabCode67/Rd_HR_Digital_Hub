@@ -124,10 +124,14 @@ export const departmentAPI = {
   /**
    * Get all departments
    */
-  async getAll(skip = 0, limit = 100): Promise<Department[]> {
-    return fetchAPI<Department[]>(
-      `${ENDPOINTS.DEPARTMENTS}?skip=${skip}&limit=${limit}`
-    );
+  async getAll(skip = 0, limit = 100, search?: string): Promise<Department[]> {
+    const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (search) params.set('search', search);
+    return fetchAPI<Department[]>(`${ENDPOINTS.DEPARTMENTS}?${params}`);
+  },
+
+  async getStats(): Promise<{ total: number; root: number; with_positions: number; empty: number }> {
+    return fetchAPI(`${API_PREFIX}/departments/stats`);
   },
 
   /**
@@ -188,19 +192,16 @@ export const positionAPI = {
   /**
    * Get all positions with optional department filter
    */
-  async getAll(
-    departmentId?: string,
-    skip = 0,
-    limit = 100
-  ): Promise<Position[]> {
-    const params = new URLSearchParams({
-      skip: skip.toString(),
-      limit: limit.toString(),
-    });
-    if (departmentId) {
-      params.append("department_id", departmentId);
-    }
+  async getAll(departmentId?: string, skip = 0, limit = 200, search?: string, vacantOnly?: boolean): Promise<Position[]> {
+    const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (departmentId) params.set('department_id', departmentId);
+    if (search) params.set('search', search);
+    if (vacantOnly) params.set('vacant_only', 'true');
     return fetchAPI<Position[]>(`${ENDPOINTS.POSITIONS}?${params}`);
+  },
+
+  async getStats(): Promise<{ total: number; filled: number; vacant: number; fill_rate: number }> {
+    return fetchAPI(`${API_PREFIX}/positions/stats`);
   },
 
   /**
@@ -281,10 +282,15 @@ export const employeeAPI = {
   /**
    * Get all employees
    */
-  async getAll(skip = 0, limit = 100): Promise<Employee[]> {
-    return fetchAPI<Employee[]>(
-      `${ENDPOINTS.EMPLOYEES}?skip=${skip}&limit=${limit}`
-    );
+  async getAll(skip = 0, limit = 200, search?: string, status?: string): Promise<Employee[]> {
+    const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    return fetchAPI<Employee[]>(`${ENDPOINTS.EMPLOYEES}?${params}`);
+  },
+
+  async getStats(): Promise<{ total: number; active: number; inactive: number; suspended: number; terminated: number }> {
+    return fetchAPI(`${API_PREFIX}/employees/stats`);
   },
 
   /**
