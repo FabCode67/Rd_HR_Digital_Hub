@@ -5,13 +5,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { User, FileText, LogOut, Sun, Moon, Menu, X, KeyRound } from "lucide-react";
+import { User, FileText, TrendingUp, LogOut, Sun, Moon, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
-  { href: "/staff",       label: "My Profile", icon: User,     exact: true },
-  { href: "/staff/forms", label: "My Forms",   icon: FileText, exact: false },
+  { href: "/staff",        label: "My Profile", icon: User,       exact: true },
+  { href: "/staff/career", label: "My Career",  icon: TrendingUp, exact: false },
+  { href: "/staff/forms",  label: "My Forms",   icon: FileText,   exact: false },
 ];
 
 export default function StaffShell({ children }: { children: React.ReactNode }) {

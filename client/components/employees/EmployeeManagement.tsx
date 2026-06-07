@@ -7,9 +7,10 @@ import {
   EmployeeStatus, EmployeeUpdateInput, Position,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus } from "lucide-react";
+import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
+import CareerTimeline from "./CareerTimeline";
 
 type Stats = { total: number; active: number; inactive: number; suspended: number; terminated: number };
 type FormState = { full_name: string; email: string; phone: string; date_of_birth: string; national_id: string; status: EmployeeStatus };
@@ -65,6 +66,9 @@ export default function EmployeeManagement() {
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [deleting, setDeleting]         = useState(false);
+
+  // Career timeline
+  const [timelineEmployee, setTimelineEmployee] = useState<Employee | null>(null);
 
   // Position modal
   const [posModal, setPosModal]           = useState<Employee | null>(null);
@@ -279,8 +283,15 @@ export default function EmployeeManagement() {
                   <tr key={emp.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-xs font-bold text-white">
-                          {emp.full_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
+                        <div className="h-8 w-8 shrink-0 rounded-full overflow-hidden">
+                          {emp.profile_image_url ? (
+                            <img src={emp.profile_image_url} alt={emp.full_name}
+                              className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-xs font-bold text-white">
+                              {emp.full_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
+                            </div>
+                          )}
                         </div>
                         <span className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</span>
                       </div>
@@ -298,6 +309,10 @@ export default function EmployeeManagement() {
                         <button onClick={() => openEdit(emp)}
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
                           <Pencil className="h-3 w-3" /> Edit
+                        </button>
+                        <button onClick={() => setTimelineEmployee(emp)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-300 transition-colors">
+                          <TrendingUp className="h-3 w-3" /> Career
                         </button>
                         <button onClick={() => void openPosModal(emp)}
                           className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-300 transition-colors">
@@ -487,6 +502,16 @@ export default function EmployeeManagement() {
         description="This will permanently remove the employee and all their records."
         itemName={deleteTarget?.full_name ?? ""} loading={deleting}
         onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} />
+
+      {timelineEmployee && (
+        <CareerTimeline
+          employeeId={timelineEmployee.id}
+          employeeName={timelineEmployee.full_name}
+          profileImageUrl={timelineEmployee.profile_image_url}
+          isAdmin={true}
+          onClose={() => setTimelineEmployee(null)}
+        />
+      )}
     </section>
   );
 }

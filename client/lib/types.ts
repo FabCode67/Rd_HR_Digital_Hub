@@ -209,6 +209,7 @@ export interface SelectedNodeDetails {
   employee?: EmployeeSimple;
   department_id?: UUID;
   parent_id?: UUID;
+  profile_image_url?: string | null;
   created_at?: string;
   updated_at?: string;
 }

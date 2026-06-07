@@ -83,12 +83,14 @@ class Employee(Base):
     hashed_password = Column(String(255), nullable=True)
     role = Column(Enum(UserRole), default=UserRole.STAFF, index=True)
     status = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE, index=True)
+    profile_image_url = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     positions = relationship("EmployeePosition", back_populates="employee", cascade="all, delete-orphan")
     form_responses = relationship("FormResponse", back_populates="employee", cascade="all, delete-orphan")
+    education_records = relationship("EducationRecord", back_populates="employee", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Employee(id={self.id}, name='{self.full_name}', email='{self.email}')>"
@@ -230,3 +232,27 @@ class StaffFormAssignment(Base):
     
     def __repr__(self):
         return f"<StaffFormAssignment(employee_id={self.employee_id}, form_id={self.form_id})>"
+
+
+class EducationRecord(Base):
+    """EducationRecord model - tracks employee education, certifications and trainings."""
+    __tablename__ = "education_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    record_type = Column(String(50), nullable=False)  # degree | certification | training | course
+    title = Column(String(255), nullable=False)
+    institution = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    is_current = Column(Boolean, default=False)
+    certificate_url = Column(String(500), nullable=True)  # Cloudinary URL
+    grade = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="education_records")
+
+    def __repr__(self):
+        return f"<EducationRecord(id={self.id}, employee_id={self.employee_id}, title='{self.title}')>"

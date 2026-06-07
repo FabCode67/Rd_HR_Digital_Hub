@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React from "react";
 import PositionNode from "./PositionNode";
 import { PositionTreeNode } from "@/lib/types";
 
@@ -11,107 +11,89 @@ interface PositionTreeProps {
   departmentMap: Record<string, string>;
 }
 
-/**
- * Renders a horizontal row of position nodes with SVG connector lines.
- */
-export default function PositionTree({ positions, level = 0, onPositionUpdated, departmentMap }: PositionTreeProps) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [centers, setCenters] = useState<number[]>([]);
-  const [rowWidth, setRowWidth] = useState(0);
+const CARD_W  = 176;
+const CARD_GAP = 20;
+const DROP_H  = 24;
 
-  const measure = () => {
-    if (!rowRef.current) return;
-    const rowRect = rowRef.current.getBoundingClientRect();
-    const cx = cardRefs.current
-      .filter(Boolean)
-      .map((el) => {
-        const r = el!.getBoundingClientRect();
-        return r.left - rowRect.left + r.width / 2;
-      });
-    setCenters(cx);
-    setRowWidth(rowRef.current.offsetWidth);
-  };
+function subtreeWidth(node: PositionTreeNode): number {
+  const children = node.children ?? [];
+  if (children.length === 0) return CARD_W;
+  const total = children.reduce((acc, c) => acc + subtreeWidth(c), 0)
+    + CARD_GAP * (children.length - 1);
+  return Math.max(CARD_W, total);
+}
 
-  useEffect(() => {
-    if (!rowRef.current) return;
-    const ob = new ResizeObserver(measure);
-    ob.observe(rowRef.current);
-    measure();
-    return () => ob.disconnect();
-  }, [positions.length]);
-
+export default function PositionTree({
+  positions, level = 0, onPositionUpdated, departmentMap,
+}: PositionTreeProps) {
   if (!positions.length) return null;
 
-  const STEM_H = 24;
-  const DROP_H = 20;
+  const childWidths = positions.map(subtreeWidth);
+  const totalWidth  = childWidths.reduce((a, b) => a + b, 0)
+    + CARD_GAP * (positions.length - 1);
+
+  // Card centres relative to left edge of the total row
+  let cursor = 0;
+  const cardCentres = childWidths.map(w => {
+    const centre = cursor + w / 2;
+    cursor += w + CARD_GAP;
+    return centre;
+  });
+
+  const barLeft  = cardCentres[0];
+  const barRight = cardCentres[cardCentres.length - 1];
 
   return (
-    <div className="relative">
-      {/* SVG connector lines — drawn using real measured card centers */}
-      {positions.length > 1 && centers.length > 1 && rowWidth > 0 && (
-        <svg
-          className="absolute top-0 left-0 pointer-events-none overflow-visible"
-          width={rowWidth}
-          height={STEM_H + DROP_H}
-          style={{ zIndex: 0 }}
-        >
-          {/* Horizontal bar from first to last card center */}
-          <line
-            x1={centers[0]}
-            y1={STEM_H}
-            x2={centers[centers.length - 1]}
-            y2={STEM_H}
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-            className="text-slate-300 dark:text-slate-600"
-          />
-          {/* Vertical drop to each card center */}
-          {centers.map((cx, i) => (
-            <line
-              key={i}
-              x1={cx} y1={STEM_H}
-              x2={cx} y2={STEM_H + DROP_H}
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              className="text-slate-300 dark:text-slate-600"
-            />
-          ))}
-        </svg>
-      )}
-
-      {/* Single node — just a short stem */}
-      {positions.length === 1 && (
-        <div className="flex justify-center">
-          <div
-            className="w-px border-l-2 border-dashed border-slate-300 dark:border-slate-600"
-            style={{ height: STEM_H + DROP_H }}
-          />
-        </div>
-      )}
-
-      {/* Node row — each card gets a ref for real center measurement */}
-      <div
-        ref={rowRef}
-        className="relative flex flex-wrap justify-center gap-4"
-        style={{ paddingTop: STEM_H + DROP_H }}
-      >
-        {positions.map((p, i) => (
-          <div
-            key={p.id}
-            ref={(el) => { cardRefs.current[i] = el; }}
-            className="flex flex-col items-center"
+    // Outer: allow horizontal scroll if the tree is wider than the viewport
+    <div className="overflow-x-auto pb-6">
+      <div style={{ width: totalWidth, minWidth: totalWidth }} className="relative">
+        {/* SVG connector lines at the top of this level */}
+        {positions.length > 0 && (
+          <svg
+            width={totalWidth}
+            height={DROP_H}
+            className="absolute top-0 left-0 pointer-events-none overflow-visible"
+            style={{ zIndex: 0 }}
           >
+            {/* Horizontal bar spanning all siblings */}
+            {positions.length > 1 && (
+              <line
+                x1={barLeft} y1={0}
+                x2={barRight} y2={0}
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                className="stroke-slate-300 dark:stroke-slate-600"
+              />
+            )}
+            {/* Vertical drop to each card */}
+            {cardCentres.map((cx, i) => (
+              <line
+                key={i}
+                x1={cx} y1={0}
+                x2={cx} y2={DROP_H}
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                className="stroke-slate-300 dark:stroke-slate-600"
+              />
+            ))}
+          </svg>
+        )}
+
+        {/* Node row — no wrapping, each node owns its column width */}
+        <div
+          className="flex flex-row items-start flex-nowrap"
+          style={{ gap: CARD_GAP, paddingTop: DROP_H }}
+        >
+          {positions.map((p) => (
             <PositionNode
+              key={p.id}
               node={p}
               level={level}
               onPositionUpdated={onPositionUpdated}
               departmentMap={departmentMap}
             />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

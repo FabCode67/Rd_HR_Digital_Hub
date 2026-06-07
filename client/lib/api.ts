@@ -289,6 +289,33 @@ export const employeeAPI = {
     return fetchAPI<Employee[]>(`${ENDPOINTS.EMPLOYEES}?${params}`);
   },
 
+  async uploadAvatar(employeeId: string, file: File, token: string): Promise<{ profile_image_url: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    // Raw fetch — fetchAPI always sets Content-Type: application/json which breaks multipart
+    const res = await fetch(
+      `${API_BASE_URL}${API_PREFIX}/employees/${employeeId}/upload-avatar`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }, // no Content-Type — browser sets multipart boundary
+        body: form,
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Upload failed: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  async deleteAvatar(employeeId: string): Promise<void> {
+    return fetchAPI<void>(`${API_PREFIX}/employees/${employeeId}/avatar`, { method: "DELETE" });
+  },
+
+  async getCareerTimeline(employeeId: string): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/employees/${employeeId}/career-timeline`);
+  },
+
   async getStats(): Promise<{ total: number; active: number; inactive: number; suspended: number; terminated: number }> {
     return fetchAPI(`${API_PREFIX}/employees/stats`);
   },
@@ -494,6 +521,44 @@ export const formAPI = {
   },
 };
 
+export const educationAPI = {
+  async getMyRecords(): Promise<any[]> {
+    return fetchAPI<any[]>(`${API_PREFIX}/education/me`);
+  },
+  async createMyRecord(payload: any): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/education/me`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+  async getRecords(employeeId: string): Promise<any[]> {
+    return fetchAPI<any[]>(`${API_PREFIX}/education/employee/${employeeId}`);
+  },
+  async create(employeeId: string, payload: any): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/education/employee/${employeeId}`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+  async update(recordId: string, payload: any): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/education/${recordId}`, {
+      method: "PUT", body: JSON.stringify(payload),
+    });
+  },
+  async delete(recordId: string): Promise<void> {
+    return fetchAPI<void>(`${API_PREFIX}/education/${recordId}`, { method: "DELETE" });
+  },
+  async uploadCertificate(recordId: string, file: File, token: string): Promise<{ certificate_url: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE_URL}${API_PREFIX}/education/${recordId}/upload-certificate`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Upload failed"); }
+    return res.json();
+  },
+};
+
 /**
  * Combined API client
  */
@@ -502,4 +567,5 @@ export const apiClient = {
   position: positionAPI,
   employee: employeeAPI,
   form: formAPI,
+  education: educationAPI,
 };

@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiClient } from "@/lib/api";
 import {
   Mail, Phone, Calendar, CreditCard, ShieldCheck,
   KeyRound, CheckCircle2, AlertCircle, Eye, EyeOff,
-  User, Loader2,
+  User, Loader2, Camera, Trash2,
 } from "lucide-react";
 import { API_CONFIG } from "@/lib/config";
+import Image from "next/image";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,106 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
+// ─── Avatar upload ─────────────────────────────────────────────────────────────
+
+function AvatarUpload({ userId, imageUrl, initials, onUploaded, token }: {
+  userId: string;
+  imageUrl?: string | null;
+  initials: string;
+  onUploaded: (url: string | null) => void;
+  token: string | null;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview]     = useState<string | null>(imageUrl ?? null);
+  const [error, setError]         = useState("");
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Only image files allowed."); return; }
+    if (file.size > 5 * 1024 * 1024)    { setError("File must be under 5 MB.");  return; }
+
+    setError("");
+    setUploading(true);
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+
+    try {
+      const result = await apiClient.employee.uploadAvatar(userId, file, token ?? "");
+      setPreview(result.profile_image_url);
+      onUploaded(result.profile_image_url);
+    } catch (err: any) {
+      setError(err?.message || "Upload failed");
+      setPreview(imageUrl ?? null);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const handleRemove = async () => {
+    setUploading(true);
+    try {
+      await apiClient.employee.deleteAvatar(userId);
+      setPreview(null);
+      onUploaded(null);
+    } catch (err: any) {
+      setError(err?.message || "Failed to remove");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {/* Avatar */}
+      <div className="relative group">
+        <div className="h-20 w-20 shrink-0 rounded-2xl overflow-hidden shadow-lg">
+          {preview ? (
+            <Image src={preview} alt="Profile" width={80} height={80}
+              className="h-full w-full object-cover" unoptimized />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-500 text-3xl font-bold text-white">
+              {initials}
+            </div>
+          )}
+        </div>
+
+        {/* Upload overlay on hover */}
+        <button type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed">
+          {uploading
+            ? <Loader2 className="h-5 w-5 animate-spin text-white" />
+            : <Camera className="h-5 w-5 text-white" />}
+        </button>
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-2">
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 transition-colors">
+          <Camera className="h-3 w-3" /> {preview ? "Change" : "Upload"}
+        </button>
+        {preview && (
+          <button type="button" onClick={handleRemove} disabled={uploading}
+            className="inline-flex items-center gap-1 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 disabled:opacity-60 transition-colors">
+            <Trash2 className="h-3 w-3" /> Remove
+          </button>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    </div>
+  );
+}
+
 // ─── Password form ─────────────────────────────────────────────────────────────
 
 function PasswordForm({ token }: { token: string | null }) {
@@ -61,9 +162,9 @@ function PasswordForm({ token }: { token: string | null }) {
 
   const strength = (p: string) => {
     let s = 0;
-    if (p.length >= 8)     s++;
-    if (/[A-Z]/.test(p))   s++;
-    if (/[0-9]/.test(p))   s++;
+    if (p.length >= 8)           s++;
+    if (/[A-Z]/.test(p))         s++;
+    if (/[0-9]/.test(p))         s++;
     if (/[^A-Za-z0-9]/.test(p)) s++;
     return s;
   };
@@ -74,10 +175,10 @@ function PasswordForm({ token }: { token: string | null }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(""); setSuccess(false);
-    if (!token)              { setError("Not authenticated"); return; }
-    if (!old || !next)       { setError("Please fill all fields"); return; }
-    if (next !== confirm)    { setError("New passwords do not match"); return; }
-    if (next.length < 8)     { setError("Password must be at least 8 characters"); return; }
+    if (!token)           { setError("Not authenticated"); return; }
+    if (!old || !next)    { setError("Please fill all fields"); return; }
+    if (next !== confirm) { setError("New passwords do not match"); return; }
+    if (next.length < 8)  { setError("Password must be at least 8 characters"); return; }
     setLoading(true);
     try {
       const res = await fetch(`${API_CONFIG.baseURL}${API_CONFIG.apiPrefix}/auth/change-password`, {
@@ -99,7 +200,6 @@ function PasswordForm({ token }: { token: string | null }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
-      {/* Current */}
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
           Current Password
@@ -113,8 +213,6 @@ function PasswordForm({ token }: { token: string | null }) {
           </button>
         </div>
       </div>
-
-      {/* New */}
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
           New Password
@@ -140,8 +238,6 @@ function PasswordForm({ token }: { token: string | null }) {
           </div>
         )}
       </div>
-
-      {/* Confirm */}
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
           Confirm New Password
@@ -149,11 +245,8 @@ function PasswordForm({ token }: { token: string | null }) {
         <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
           className={`field ${confirm && confirm !== next ? "border-red-400 dark:border-red-600" : confirm && confirm === next ? "border-emerald-400 dark:border-emerald-600" : ""}`}
           placeholder="Repeat new password" />
-        {confirm && confirm !== next && (
-          <p className="mt-1 text-xs text-red-500">Passwords don't match</p>
-        )}
+        {confirm && confirm !== next && <p className="mt-1 text-xs text-red-500">Passwords don't match</p>}
       </div>
-
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
           <AlertCircle className="h-4 w-4 shrink-0" /> {error}
@@ -164,7 +257,6 @@ function PasswordForm({ token }: { token: string | null }) {
           <CheckCircle2 className="h-4 w-4 shrink-0" /> Password changed successfully!
         </div>
       )}
-
       <button type="submit" disabled={loading}
         className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
@@ -177,7 +269,8 @@ function PasswordForm({ token }: { token: string | null }) {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 export default function StaffProfilePage() {
-  const { user, token } = useAuth();
+  const { user, token, updateUser } = useAuth();
+  const [imageUrl, setImageUrl] = useState<string | null>(user?.profile_image_url ?? null);
 
   const initials = user?.full_name
     ? user.full_name.split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase()
@@ -191,20 +284,34 @@ export default function StaffProfilePage() {
     ? new Date(user.date_of_birth).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
 
+  const handleAvatarUpdate = (url: string | null) => {
+    setImageUrl(url);
+    if (updateUser) updateUser({ ...user, profile_image_url: url });
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
 
       {/* ── Hero card ── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-xl">
-        {/* Background blobs */}
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-blue-400/10 blur-2xl" />
 
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
-          {/* Avatar */}
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-3xl font-bold text-white shadow-lg">
-            {initials}
-          </div>
+          {/* Avatar with upload */}
+          {user?.id ? (
+            <AvatarUpload
+              userId={user.id}
+              imageUrl={imageUrl}
+              initials={initials}
+              onUploaded={handleAvatarUpdate}
+              token={token}
+            />
+          ) : (
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-3xl font-bold text-white shadow-lg">
+              {initials}
+            </div>
+          )}
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -224,6 +331,7 @@ export default function StaffProfilePage() {
                 </span>
               )}
             </div>
+            <p className="mt-3 text-[11px] text-slate-500">Hover over avatar to change photo · Max 5 MB</p>
           </div>
         </div>
       </div>
@@ -242,7 +350,6 @@ export default function StaffProfilePage() {
             <Field label="Phone" value={user?.phone} icon={Phone} />
           </div>
         </div>
-
         <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
@@ -273,7 +380,6 @@ export default function StaffProfilePage() {
         </div>
         <PasswordForm token={token} />
       </div>
-
     </div>
   );
 }

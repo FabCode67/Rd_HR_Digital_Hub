@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import run_migrations, check_db_connection
 from app.routers import departments, positions, employees, forms
+from app.routers import education as education_router
 
 
 def create_app() -> FastAPI:
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(positions.router,   prefix=prefix)
     app.include_router(employees.router,   prefix=prefix)
     app.include_router(forms.router,       prefix=prefix)
+    app.include_router(education_router.router, prefix=prefix)
 
     from app.routers import auth as auth_router
     app.include_router(auth_router.router, prefix=prefix)

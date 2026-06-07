@@ -152,6 +152,7 @@ class EmployeeUpdate(BaseModel):
 class EmployeeResponse(EmployeeBase):
     """Schema for Employee response."""
     id: UUID
+    profile_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
