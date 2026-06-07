@@ -1,41 +1,44 @@
 """
 Database configuration and session management.
+Schema is managed by Alembic migrations — do NOT call create_all() here.
 """
 from typing import Generator
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
-from app.core.config import settings
 from sqlalchemy.ext.declarative import declarative_base
+from app.core.config import settings
 
-# Create base class for models
+# ── Shared declarative base (imported by all models and by env.py) ────────────
 Base = declarative_base()
 
-# Create engine
-# Note: psycopg2 does not accept a `server_settings` connect arg; use
-# `application_name` or omit unsupported options. Provide `application_name`
-# in `connect_args` for PostgreSQL URLs only.
-connect_args = {}
-if "postgresql" in settings.DATABASE_URL:
-    connect_args = {"application_name": "Rwanda HR Digital Hub"}
+# ── Engine ────────────────────────────────────────────────────────────────────
+_url = settings.DATABASE_URL
+if _url.startswith("postgres://"):
+    _url = _url.replace("postgres://", "postgresql://", 1)
+
+_connect_args: dict = {}
+if "neon.tech" in _url:
+    # Neon requires SSL; psycopg2-binary honours sslmode in the DSN but we
+    # also pass it explicitly so it is never stripped by SQLAlchemy.
+    _connect_args["sslmode"] = "require"
+elif "postgresql" in _url:
+    _connect_args["application_name"] = "Rwanda HR Digital Hub"
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    _url,
     echo=settings.DEBUG,
-    poolclass=NullPool if settings.DEBUG else None,
-    connect_args=connect_args,
+    # NullPool: no persistent connections — safe for serverless / Neon
+    poolclass=NullPool,
+    connect_args=_connect_args,
 )
 
-# Create session factory
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+# ── Session factory ───────────────────────────────────────────────────────────
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Dependency injection for database session."""
+    """FastAPI dependency — yields a database session per request."""
     db = SessionLocal()
     try:
         yield db
@@ -43,52 +46,48 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def init_db():
-    """Initialize database (create all tables)."""
-    Base.metadata.create_all(bind=engine)
-    _ensure_employee_auth_columns()
+def run_migrations() -> None:
+    """Apply pending Alembic migrations at startup using the alembic CLI executable."""
+    import sys
+    import subprocess
+    from pathlib import Path
 
+    server_root = Path(__file__).resolve().parent.parent
 
-def _ensure_employee_auth_columns() -> None:
-    """Backfill auth columns for databases created before auth fields existed."""
-    inspector = inspect(engine)
-    if "employees" not in inspector.get_table_names():
+    # Find alembic.exe next to the current Python interpreter
+    python_dir = Path(sys.executable).parent
+    scripts_dir = python_dir / "Scripts"
+    alembic_exe = scripts_dir / "alembic.exe"
+    if not alembic_exe.exists():
+        alembic_exe = scripts_dir / "alembic"  # Unix
+    if not alembic_exe.exists():
+        print(f"[migrations] alembic executable not found in {scripts_dir} — skipping")
         return
 
-    columns = {column["name"] for column in inspector.get_columns("employees")}
-
-    statements = []
-    if "hashed_password" not in columns:
-        statements.append(
-            text("ALTER TABLE employees ADD COLUMN hashed_password VARCHAR(255)")
-        )
-    if "role" not in columns:
-        statements.append(
-            text("ALTER TABLE employees ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'staff'")
-        )
-    if "status" not in columns:
-        statements.append(
-            text("ALTER TABLE employees ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'")
-        )
-    
-    # Also ensure existing rows have the correct enum format for existing role column
-    # This handles databases that may have been created with lowercase defaults
-    if columns and "role" in columns:
-        statements.append(
-            text("UPDATE employees SET role = 'STAFF' WHERE role = 'staff' OR role IS NULL")
-        )
-        statements.append(
-            text("UPDATE employees SET role = 'ADMIN' WHERE role = 'admin'")
-        )
-
-    if not statements:
+    ini_path = server_root / "alembic.ini"
+    if not ini_path.exists():
+        print(f"[migrations] alembic.ini not found at {ini_path} — skipping")
         return
 
-    with engine.begin() as connection:
-        for statement in statements:
-            connection.execute(statement)
+    try:
+        result = subprocess.run(
+            [str(alembic_exe), "upgrade", "head"],
+            cwd=str(server_root),
+            capture_output=False,
+        )
+        if result.returncode == 0:
+            print("[migrations] Database schema is up-to-date.")
+        else:
+            print(f"[migrations] Warning: alembic exited with code {result.returncode}")
+    except Exception as exc:
+        print(f"[migrations] Warning: migration failed — {exc}")
 
 
-def drop_db():
-    """Drop all tables (use with caution)."""
-    Base.metadata.drop_all(bind=engine)
+def check_db_connection() -> bool:
+    """Quick connectivity check — used in the /health endpoint."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
