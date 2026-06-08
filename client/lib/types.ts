@@ -32,6 +32,7 @@ export interface Employee {
   date_of_birth?: string;
   national_id?: string;
   status: EmployeeStatus;
+  profile_image_url?: string | null;
   created_at: string;
   updated_at: string;
 }
