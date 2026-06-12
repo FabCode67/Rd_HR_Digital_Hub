@@ -316,6 +316,26 @@ export const employeeAPI = {
     return fetchAPI<any>(`${API_PREFIX}/employees/${employeeId}/career-timeline`);
   },
 
+  async getExpiringAlerts(): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/employees/alerts/expiring`);
+  },
+
+  async extendProbation(employeeId: string, payload: { new_end_date: string; reason?: string }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/employees/${employeeId}/extend-probation`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+
+  async extendContract(employeeId: string, payload: { new_end_date: string; reason?: string }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/employees/${employeeId}/extend-contract`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+
+  async getExtensions(employeeId: string): Promise<any[]> {
+    return fetchAPI<any[]>(`${API_PREFIX}/employees/${employeeId}/extensions`);
+  },
+
   async getStats(): Promise<{ total: number; active: number; inactive: number; suspended: number; terminated: number }> {
     return fetchAPI(`${API_PREFIX}/employees/stats`);
   },

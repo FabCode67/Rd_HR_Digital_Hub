@@ -13,11 +13,27 @@ import { DeleteModal } from "@/components/ui/DeleteModal";
 import CareerTimeline from "./CareerTimeline";
 
 type Stats = { total: number; active: number; inactive: number; suspended: number; terminated: number };
-type FormState = { full_name: string; email: string; phone: string; date_of_birth: string; national_id: string; status: EmployeeStatus };
+type FormState = {
+  full_name: string; email: string; phone: string;
+  date_of_birth: string; national_id: string; status: EmployeeStatus;
+  employment_type: "permanent" | "temporary";
+  contract_end_date: string;
+  past_employer: string; past_position: string;
+};
 type PosAssign = { departmentId: string; positionId: string; startDate: string };
 
 const STATUSES: EmployeeStatus[] = ["ACTIVE","INACTIVE","SUSPENDED","TERMINATED"];
-const emptyForm: FormState = { full_name: "", email: "", phone: "", date_of_birth: "", national_id: "", status: "ACTIVE" };
+const CORP_TITLES = [
+  "Managing Director","Executive Director","Director",
+  "Head of Department","Senior Manager","Manager",
+  "Assistant Manager","Team Leader","Senior Officer",
+  "Officer","Graduate Trainee","Intern",
+];
+const emptyForm: FormState = {
+  full_name: "", email: "", phone: "", date_of_birth: "", national_id: "",
+  status: "ACTIVE", employment_type: "permanent", contract_end_date: "",
+  past_employer: "", past_position: "",
+};
 const emptyAssign: PosAssign = { departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10) };
 
 const STATUS_COLORS: Record<EmployeeStatus, string> = {
@@ -70,6 +86,13 @@ export default function EmployeeManagement() {
   // Career timeline
   const [timelineEmployee, setTimelineEmployee] = useState<Employee | null>(null);
 
+  // Expiring alerts
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [extendModal, setExtendModal] = useState<{ emp: Employee; type: "probation" | "contract" } | null>(null);
+  const [extendDate, setExtendDate] = useState("");
+  const [extendReason, setExtendReason] = useState("");
+  const [extending, setExtending] = useState(false);
+
   // Position modal
   const [posModal, setPosModal]           = useState<Employee | null>(null);
   const [currentAssign, setCurrentAssign] = useState<EmployeePositionDetail | null>(null);
@@ -101,6 +124,11 @@ export default function EmployeeManagement() {
       setEmployees(emps);
       setDepartments(depts);
       setStats(s);
+      // Load expiring alerts
+      try {
+        const a = await apiClient.employee.getExpiringAlerts();
+        setAlerts(a.alerts || []);
+      } catch { /* non-critical */ }
     } catch (err) {
       toast.error("Load failed", err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -119,7 +147,14 @@ export default function EmployeeManagement() {
   // ── Drawer ────────────────────────────────────────────────────────────────
   const openNew = () => { setForm(emptyForm); setPosAssign(emptyAssign); setFormPositions([]); setEditingId(null); setDrawerOpen(true); };
   const openEdit = (e: Employee) => {
-    setForm({ full_name: e.full_name, email: e.email, phone: e.phone ?? "", date_of_birth: e.date_of_birth ?? "", national_id: e.national_id ?? "", status: e.status });
+    setForm({
+      full_name: e.full_name, email: e.email, phone: e.phone ?? "",
+      date_of_birth: e.date_of_birth ?? "", national_id: e.national_id ?? "",
+      status: e.status,
+      employment_type: e.employment_type ?? "permanent",
+      contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
+      past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
+    });
     setEditingId(e.id); setDrawerOpen(true);
   };
   const closeDrawer = () => { setDrawerOpen(false); setEditingId(null); setForm(emptyForm); setPosAssign(emptyAssign); };
@@ -127,7 +162,18 @@ export default function EmployeeManagement() {
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     setSaving(true);
-    const payload = { full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || undefined, date_of_birth: form.date_of_birth || undefined, national_id: form.national_id.trim() || undefined, status: form.status };
+    const payload = {
+      full_name: form.full_name.trim(), email: form.email.trim(),
+      phone: form.phone.trim() || undefined,
+      date_of_birth: form.date_of_birth || undefined,
+      national_id: form.national_id.trim() || undefined,
+      status: form.status,
+      employment_type: form.employment_type,
+      contract_end_date: form.employment_type === "temporary" && form.contract_end_date
+        ? new Date(form.contract_end_date).toISOString() : undefined,
+      past_employer: form.past_employer.trim() || undefined,
+      past_position: form.past_position.trim() || undefined,
+    };
     try {
       if (editingId) {
         await apiClient.employee.update(editingId, payload as EmployeeUpdateInput);
@@ -229,7 +275,36 @@ export default function EmployeeManagement() {
         </button>
       </div>
 
-      {/* Stats */}
+      {/* Alerts banner */}
+      {alerts.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4 space-y-2">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            {alerts.length} expiring within 7 days
+          </p>
+          {alerts.map((a: any, i: number) => {
+            const emp = employees.find(e => e.id === a.employee_id);
+            return (
+              <div key={i} className="flex items-center justify-between rounded-lg bg-amber-100 dark:bg-amber-900/30 px-3 py-2">
+                <div>
+                  <span className="text-sm font-medium text-amber-900 dark:text-amber-100">{a.employee_name}</span>
+                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                    a.type === "probation" ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                  }`}>{a.type}</span>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">{a.days_left} days left — ends {new Date(a.end_date).toLocaleDateString()}</p>
+                </div>
+                {emp && (
+                  <button
+                    onClick={() => { setExtendModal({ emp, type: a.type }); setExtendDate(""); setExtendReason(""); }}
+                    className="rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950/40 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-50 transition-colors">
+                    Extend
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           <StatCard icon={Users}     label="Total"      value={stats.total}      color="bg-slate-500"   />
@@ -368,6 +443,54 @@ export default function EmployeeManagement() {
                   <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
                     {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                   </select>
+                </div>
+              </div>
+
+              {/* Employment Type */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Employment Type <span className="text-red-500">*</span></p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["permanent", "temporary"] as const).map(t => (
+                    <label key={t} className={`flex items-center gap-2.5 rounded-xl border-2 p-3 cursor-pointer transition-colors ${
+                      form.employment_type === t
+                        ? "border-cyan-400 bg-cyan-50 dark:bg-cyan-950/30"
+                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}>
+                      <input type="radio" name="employment_type" value={t}
+                        checked={form.employment_type === t}
+                        onChange={() => setForm(f => ({ ...f, employment_type: t }))}
+                        className="text-cyan-600" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 capitalize">{t}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {t === "permanent" ? "Probation: 3 months" : "Set contract end date"}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {form.employment_type === "temporary" && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contract End Date <span className="text-red-500">*</span></label>
+                    <input type="date" value={form.contract_end_date}
+                      onChange={e => setForm(f => ({ ...f, contract_end_date: e.target.value }))}
+                      className="field" />
+                  </div>
+                )}
+              </div>
+
+              {/* Past Employment */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Previous Employment <span className="text-xs font-normal text-slate-400">(optional)</span></p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Past Employer</label>
+                    <input value={form.past_employer} onChange={e => setForm(f => ({ ...f, past_employer: e.target.value }))} className="field" placeholder="Previous company" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Position Held</label>
+                    <input value={form.past_position} onChange={e => setForm(f => ({ ...f, past_position: e.target.value }))} className="field" placeholder="Previous role/title" />
+                  </div>
                 </div>
               </div>
 
@@ -511,6 +634,51 @@ export default function EmployeeManagement() {
           isAdmin={true}
           onClose={() => setTimelineEmployee(null)}
         />
+      )}
+
+      {/* Extend probation/contract modal */}
+      {extendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setExtendModal(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Extend {extendModal.type === "probation" ? "Probation" : "Contract"}
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{extendModal.emp.full_name}</p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">New End Date <span className="text-red-500">*</span></label>
+              <input type="date" value={extendDate} onChange={e => setExtendDate(e.target.value)} className="field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Reason</label>
+              <textarea value={extendReason} onChange={e => setExtendReason(e.target.value)} className="field min-h-20" placeholder="Reason for extension…" />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setExtendModal(null)} className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+              <button disabled={!extendDate || extending}
+                onClick={async () => {
+                  if (!extendDate) return;
+                  setExtending(true);
+                  try {
+                    const payload = { new_end_date: new Date(extendDate).toISOString(), reason: extendReason };
+                    if (extendModal.type === "probation") {
+                      await apiClient.employee.extendProbation(extendModal.emp.id, payload);
+                    } else {
+                      await apiClient.employee.extendContract(extendModal.emp.id, payload);
+                    }
+                    toast.success("Extended", `${extendModal.type} extended to ${new Date(extendDate).toLocaleDateString()}`);
+                    setExtendModal(null);
+                    await load();
+                  } catch (err) {
+                    toast.error("Failed", err instanceof Error ? err.message : "Failed");
+                  } finally { setExtending(false); }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+                {extending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Extend
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

@@ -35,6 +35,10 @@ def create_employee(
         raise HTTPException(status_code=400, detail="Email already registered")
     emp_data = employee.dict()
     emp_data["hashed_password"] = auth_service.get_password_hash("NCBAStaff@123")
+    # Auto-set probation end date for permanent employees (3 months from now)
+    from dateutil.relativedelta import relativedelta
+    if emp_data.get("employment_type") == "permanent":
+        emp_data["probation_end_date"] = datetime.utcnow() + relativedelta(months=3)
     return EmployeeService.create(db, emp_data)
 
 
@@ -333,3 +337,148 @@ def get_career_timeline(
         "total_entries":  len(timeline),
         "timeline":       timeline,
     }
+
+
+# ── Employment contract / probation endpoints ──────────────────────────────────
+
+@router.get("/alerts/expiring", dependencies=[Depends(require_admin)])
+def get_expiring_alerts(db: Session = Depends(get_db)):
+    """Return employees whose probation or contract expires within 7 days."""
+    from datetime import timedelta
+    now  = datetime.utcnow()
+    soon = now + timedelta(days=7)
+
+    alerts = []
+
+    # Probation expiring soon (permanent employees)
+    prob = db.query(Employee).filter(
+        Employee.employment_type == "permanent",
+        Employee.probation_end_date != None,
+        Employee.probation_end_date >= now,
+        Employee.probation_end_date <= soon,
+        Employee.status == "ACTIVE",
+    ).all()
+    for e in prob:
+        days_left = (e.probation_end_date - now).days
+        alerts.append({
+            "type":          "probation",
+            "employee_id":   str(e.id),
+            "employee_name": e.full_name,
+            "email":         e.email,
+            "end_date":      e.probation_end_date.isoformat(),
+            "days_left":     days_left,
+        })
+
+    # Contract expiring soon (temporary employees)
+    cont = db.query(Employee).filter(
+        Employee.employment_type == "temporary",
+        Employee.contract_end_date != None,
+        Employee.contract_end_date >= now,
+        Employee.contract_end_date <= soon,
+        Employee.status == "ACTIVE",
+    ).all()
+    for e in cont:
+        days_left = (e.contract_end_date - now).days
+        alerts.append({
+            "type":          "contract",
+            "employee_id":   str(e.id),
+            "employee_name": e.full_name,
+            "email":         e.email,
+            "end_date":      e.contract_end_date.isoformat(),
+            "days_left":     days_left,
+        })
+
+    return {"alerts": alerts, "count": len(alerts)}
+
+
+@router.post("/{employee_id}/extend-probation", dependencies=[Depends(require_admin)])
+def extend_probation(
+    employee_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Extend probation period for a permanent employee."""
+    from app.models import EmploymentExtension
+    employee = EmployeeService.get_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if employee.employment_type != "permanent":
+        raise HTTPException(status_code=400, detail="Only permanent employees have probation")
+
+    new_end = payload.get("new_end_date")
+    reason  = payload.get("reason", "")
+    if not new_end:
+        raise HTTPException(status_code=400, detail="new_end_date is required")
+
+    new_end_dt = datetime.fromisoformat(new_end.replace("Z", "+00:00")).replace(tzinfo=None)
+    prev_end   = employee.probation_end_date or datetime.utcnow()
+
+    ext = EmploymentExtension(
+        id=__import__("uuid").uuid4(),
+        employee_id=employee_id,
+        extension_type="probation",
+        previous_end_date=prev_end,
+        new_end_date=new_end_dt,
+        reason=reason,
+        extended_by=str(admin.email) if hasattr(admin, "email") else "admin",
+        created_at=datetime.utcnow(),
+    )
+    employee.probation_end_date = new_end_dt
+    employee.probation_extended = True
+    db.add(ext)
+    db.commit()
+    return {"message": "Probation extended", "new_end_date": new_end_dt.isoformat()}
+
+
+@router.post("/{employee_id}/extend-contract", dependencies=[Depends(require_admin)])
+def extend_contract(
+    employee_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Extend contract end date for a temporary employee."""
+    from app.models import EmploymentExtension
+    employee = EmployeeService.get_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if employee.employment_type != "temporary":
+        raise HTTPException(status_code=400, detail="Only temporary employees have contracts")
+
+    new_end = payload.get("new_end_date")
+    reason  = payload.get("reason", "")
+    if not new_end:
+        raise HTTPException(status_code=400, detail="new_end_date is required")
+
+    new_end_dt = datetime.fromisoformat(new_end.replace("Z", "+00:00")).replace(tzinfo=None)
+    prev_end   = employee.contract_end_date or datetime.utcnow()
+
+    ext = EmploymentExtension(
+        id=__import__("uuid").uuid4(),
+        employee_id=employee_id,
+        extension_type="contract",
+        previous_end_date=prev_end,
+        new_end_date=new_end_dt,
+        reason=reason,
+        extended_by=str(admin.email) if hasattr(admin, "email") else "admin",
+        created_at=datetime.utcnow(),
+    )
+    employee.contract_end_date = new_end_dt
+    db.add(ext)
+    db.commit()
+    return {"message": "Contract extended", "new_end_date": new_end_dt.isoformat()}
+
+
+@router.get("/{employee_id}/extensions", dependencies=[Depends(require_admin)])
+def get_extensions(employee_id: UUID, db: Session = Depends(get_db)):
+    """Get all probation/contract extensions for an employee."""
+    from app.models import EmploymentExtension
+    exts = db.query(EmploymentExtension).filter(
+        EmploymentExtension.employee_id == employee_id
+    ).order_by(EmploymentExtension.created_at.desc()).all()
+    return [{"id": str(e.id), "extension_type": e.extension_type,
+             "previous_end_date": e.previous_end_date.isoformat(),
+             "new_end_date": e.new_end_date.isoformat(),
+             "reason": e.reason, "extended_by": e.extended_by,
+             "created_at": e.created_at.isoformat()} for e in exts]

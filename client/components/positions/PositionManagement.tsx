@@ -11,19 +11,29 @@ import { DeleteModal } from "@/components/ui/DeleteModal";
 type Stats = { total: number; filled: number; vacant: number; fill_rate: number };
 type FormState = { title: string; description: string; department_id: string; parent_position_id: string; level: PositionLevel; band: string; is_active: boolean };
 
-const LEVELS: PositionLevel[] = ["Director","Head","Manager","Senior Manager","Assistant Manager","Officer","Graduate Trainee","Intern"];
-const emptyForm: FormState = { title: "", description: "", department_id: "", parent_position_id: "", level: "Officer", band: "", is_active: true };
+const LEVELS: PositionLevel[] = [
+  "Managing Director","Executive Director","Director",
+  "Head of Department","Senior Manager","Manager",
+  "Assistant Manager","Team Leader","Senior Officer",
+  "Officer","Graduate Trainee","Intern",
+];
 
 const LEVEL_COLORS: Record<string, string> = {
-  Director: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
-  Head: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
-  Manager: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  "Senior Manager": "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
-  "Assistant Manager": "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  Officer: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  "Graduate Trainee": "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
-  Intern: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  "Managing Director":  "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
+  "Executive Director": "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+  Director:             "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  "Head of Department": "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  "Senior Manager":     "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+  Manager:              "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  "Assistant Manager":  "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  "Team Leader":        "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+  "Senior Officer":     "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  Officer:              "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  "Graduate Trainee":   "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
+  Intern:               "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
+
+const emptyForm: FormState = { title: "", description: "", department_id: "", parent_position_id: "", level: "Officer", band: "", is_active: true };
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
   return (

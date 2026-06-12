@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, date
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, validator
-from app.models import EmployeeStatus, UserRole
+from app.models import EmployeeStatus, UserRole, EmploymentType
 
 
 # ============================================================================
@@ -132,6 +132,12 @@ class EmployeeBase(BaseModel):
     national_id: Optional[str] = None
     status: EmployeeStatus = EmployeeStatus.ACTIVE
     role: UserRole = UserRole.STAFF
+    # Employment
+    employment_type: Optional[str] = "permanent"  # permanent | temporary
+    contract_end_date: Optional[datetime] = None   # for temporary
+    # Past employment
+    past_employer: Optional[str] = None
+    past_position: Optional[str] = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -147,14 +153,39 @@ class EmployeeUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     national_id: Optional[str] = None
     status: Optional[EmployeeStatus] = None
+    employment_type: Optional[str] = None
+    contract_end_date: Optional[datetime] = None
+    probation_end_date: Optional[datetime] = None
+    past_employer: Optional[str] = None
+    past_position: Optional[str] = None
 
 
 class EmployeeResponse(EmployeeBase):
     """Schema for Employee response."""
     id: UUID
     profile_image_url: Optional[str] = None
+    probation_end_date: Optional[datetime] = None
+    probation_extended: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EmploymentExtensionCreate(BaseModel):
+    new_end_date: datetime
+    reason: Optional[str] = None
+
+
+class EmploymentExtensionResponse(BaseModel):
+    id: UUID
+    extension_type: str
+    previous_end_date: datetime
+    new_end_date: datetime
+    reason: Optional[str] = None
+    extended_by: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

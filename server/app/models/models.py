@@ -63,6 +63,12 @@ class EmployeeStatus(str, enum.Enum):
     TERMINATED = "TERMINATED"
 
 
+class EmploymentType(str, enum.Enum):
+    """Employment type enumeration."""
+    PERMANENT = "permanent"
+    TEMPORARY = "temporary"
+
+
 class UserRole(str, enum.Enum):
     """User role enumeration."""
     ADMIN = "admin"
@@ -84,6 +90,14 @@ class Employee(Base):
     role = Column(Enum(UserRole), default=UserRole.STAFF, index=True)
     status = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE, index=True)
     profile_image_url = Column(String(500), nullable=True)
+    # Employment type & contract tracking
+    employment_type = Column(String(20), nullable=True, default="permanent")  # permanent | temporary
+    probation_end_date = Column(DateTime, nullable=True)   # auto-set 3mo from start for permanent
+    contract_end_date = Column(DateTime, nullable=True)    # for temporary employees
+    probation_extended = Column(Boolean, default=False)    # whether probation was extended
+    # Past employment
+    past_employer = Column(String(255), nullable=True)
+    past_position = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -91,6 +105,7 @@ class Employee(Base):
     positions = relationship("EmployeePosition", back_populates="employee", cascade="all, delete-orphan")
     form_responses = relationship("FormResponse", back_populates="employee", cascade="all, delete-orphan")
     education_records = relationship("EducationRecord", back_populates="employee", cascade="all, delete-orphan")
+    employment_extensions = relationship("EmploymentExtension", back_populates="employee", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Employee(id={self.id}, name='{self.full_name}', email='{self.email}')>"
@@ -256,3 +271,22 @@ class EducationRecord(Base):
 
     def __repr__(self):
         return f"<EducationRecord(id={self.id}, employee_id={self.employee_id}, title='{self.title}')>"
+
+
+class EmploymentExtension(Base):
+    """Tracks probation extensions and temporary contract extensions."""
+    __tablename__ = "employment_extensions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    extension_type = Column(String(20), nullable=False)  # probation | contract
+    previous_end_date = Column(DateTime, nullable=False)
+    new_end_date = Column(DateTime, nullable=False)
+    reason = Column(Text, nullable=True)
+    extended_by = Column(String(255), nullable=True)  # admin name
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    employee = relationship("Employee", back_populates="employment_extensions")
+
+    def __repr__(self):
+        return f"<EmploymentExtension(id={self.id}, employee_id={self.employee_id}, type='{self.extension_type}')>"

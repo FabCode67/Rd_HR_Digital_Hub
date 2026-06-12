@@ -11,11 +11,15 @@ export type EmployeeStatus =
   | "TERMINATED";
 
 export type PositionLevel =
+  | "Managing Director"
+  | "Executive Director"
   | "Director"
-  | "Head"
-  | "Manager"
+  | "Head of Department"
   | "Senior Manager"
+  | "Manager"
   | "Assistant Manager"
+  | "Team Leader"
+  | "Senior Officer"
   | "Officer"
   | "Graduate Trainee"
   | "Intern";
@@ -33,6 +37,12 @@ export interface Employee {
   national_id?: string;
   status: EmployeeStatus;
   profile_image_url?: string | null;
+  employment_type?: "permanent" | "temporary";
+  probation_end_date?: string | null;
+  probation_extended?: boolean;
+  contract_end_date?: string | null;
+  past_employer?: string | null;
+  past_position?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -133,6 +143,10 @@ export interface EmployeeCreateInput {
   date_of_birth?: string;
   national_id?: string;
   status?: EmployeeStatus;
+  employment_type?: "permanent" | "temporary";
+  contract_end_date?: string;
+  past_employer?: string;
+  past_position?: string;
 }
 
 export interface EmployeeUpdateInput {
@@ -142,6 +156,11 @@ export interface EmployeeUpdateInput {
   date_of_birth?: string;
   national_id?: string;
   status?: EmployeeStatus;
+  employment_type?: "permanent" | "temporary";
+  contract_end_date?: string;
+  probation_end_date?: string;
+  past_employer?: string;
+  past_position?: string;
 }
 
 export interface EmployeePositionAssignment {
