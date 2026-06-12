@@ -211,8 +211,10 @@ export default function AnalyticsDashboard() {
 
     // Position level bar chart
     const LEVELS: PositionLevel[] = [
-      "Director","Head","Manager","Senior Manager",
-      "Assistant Manager","Officer","Graduate Trainee","Intern",
+      "Managing Director","Executive Director","Director",
+      "Head of Department","Senior Manager","Manager",
+      "Assistant Manager","Team Leader","Senior Officer",
+      "Officer","Graduate Trainee","Intern",
     ];
     const levelBar = LEVELS
       .map(level => ({
