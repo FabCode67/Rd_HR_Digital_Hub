@@ -288,9 +288,12 @@ def delete_avatar(
 def get_career_timeline(
     employee_id: UUID,
     db: Session = Depends(get_db),
-    admin=Depends(require_admin)
+    current_user=Depends(get_current_user)
 ):
-    """Full career timeline — positions + departments, enriched."""
+    """Full career timeline. Admin can view anyone. Staff can only view their own."""
+    from app.models import UserRole
+    if current_user.role != UserRole.ADMIN and str(current_user.id) != str(employee_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
     employee = EmployeeService.get_by_id(db, employee_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
