@@ -12,6 +12,9 @@ from app.models.models import (
     UserRole,
     FormFieldType,
     StaffFormAssignment,
+    EducationRecord,
+    EmploymentType,
+    EmploymentExtension,
 )
 
 __all__ = [
@@ -27,4 +30,7 @@ __all__ = [
     "UserRole",
     "FormFieldType",
     "StaffFormAssignment",
+    "EducationRecord",
+    "EmploymentType",
+    "EmploymentExtension",
 ]
