@@ -238,11 +238,11 @@ def upload_avatar(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files are allowed")
 
-    # Configure Cloudinary
+    # Configure Cloudinary — strip whitespace to prevent copy-paste issues
     cloudinary.config(
-        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
-        api_key=settings.CLOUDINARY_API_KEY,
-        api_secret=settings.CLOUDINARY_API_SECRET,
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME.strip(),
+        api_key=settings.CLOUDINARY_API_KEY.strip(),
+        api_secret=settings.CLOUDINARY_API_SECRET.strip(),
         secure=True,
     )
 
@@ -259,7 +259,7 @@ def upload_avatar(
         )
         image_url = result["secure_url"]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)} | cloud={settings.CLOUDINARY_CLOUD_NAME.strip()} key={settings.CLOUDINARY_API_KEY.strip()[:6]}...")
 
     # Save URL to employee record
     employee.profile_image_url = image_url

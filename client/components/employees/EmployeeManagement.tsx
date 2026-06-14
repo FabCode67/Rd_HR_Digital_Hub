@@ -7,10 +7,11 @@ import {
   EmployeeStatus, EmployeeUpdateInput, Position,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp } from "lucide-react";
+import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp, Camera } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
 import CareerTimeline from "./CareerTimeline";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Stats = { total: number; active: number; inactive: number; suspended: number; terminated: number };
 type FormState = {
@@ -60,6 +61,62 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
   );
 }
 
+// ── Admin avatar upload for a specific employee ──────────────────────────────
+function AdminAvatarUpload({ employee, token, onUploaded }: {
+  employee: Employee;
+  token: string | null;
+  onUploaded: (url: string | null) => void;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Images only."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Max 5 MB."); return; }
+    setUploading(true); setError("");
+    try {
+      const res = await apiClient.employee.uploadAvatar(employee.id, file, token ?? "");
+      onUploaded(res.profile_image_url);
+    } catch (err: any) {
+      setError(err?.message || "Upload failed");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const initials = employee.full_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase();
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative group">
+        <div className="h-16 w-16 rounded-full overflow-hidden shadow">
+          {employee.profile_image_url ? (
+            <img src={employee.profile_image_url} alt={employee.full_name} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-500 text-xl font-bold text-white">
+              {initials}
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed">
+          {uploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
+        </button>
+      </div>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 transition-colors">
+        <Camera className="h-3 w-3" /> {employee.profile_image_url ? "Change photo" : "Upload photo"}
+      </button>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handle} />
+    </div>
+  );
+}
+
 export default function EmployeeManagement() {
   const [employees, setEmployees]         = useState<Employee[]>([]);
   const [departments, setDepartments]     = useState<Department[]>([]);
@@ -102,6 +159,10 @@ export default function EmployeeManagement() {
   const [modalDate, setModalDate]         = useState(new Date().toISOString().slice(0,10));
 
   const toast = useToast();
+  const { token } = useAuth();
+
+  // Avatar upload state (for edit drawer)
+  const [avatarEmployee, setAvatarEmployee] = useState<Employee | null>(null);
 
   const filtered = useMemo(() => {
     let list = employees;
@@ -155,9 +216,10 @@ export default function EmployeeManagement() {
       contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
       past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
     });
+    setAvatarEmployee(e);
     setEditingId(e.id); setDrawerOpen(true);
   };
-  const closeDrawer = () => { setDrawerOpen(false); setEditingId(null); setForm(emptyForm); setPosAssign(emptyAssign); };
+  const closeDrawer = () => { setDrawerOpen(false); setEditingId(null); setForm(emptyForm); setPosAssign(emptyAssign); setAvatarEmployee(null); };
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -417,6 +479,22 @@ export default function EmployeeManagement() {
               <button onClick={closeDrawer} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={submit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {/* Avatar upload — only shown when editing an existing employee */}
+              {editingId && avatarEmployee && (
+                <div className="flex flex-col items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <AdminAvatarUpload
+                    employee={avatarEmployee}
+                    token={token}
+                    onUploaded={url => {
+                      // Update local employee list so avatar updates in the table too
+                      setEmployees(prev => prev.map(e =>
+                        e.id === avatarEmployee.id ? { ...e, profile_image_url: url } : e
+                      ));
+                      setAvatarEmployee(prev => prev ? { ...prev, profile_image_url: url } : prev);
+                    }}
+                  />
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Full Name <span className="text-red-500">*</span></label>
