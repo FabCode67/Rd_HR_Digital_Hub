@@ -20,6 +20,8 @@ import {
   FormUpdate,
   FormFieldCreate,
   FormStatus,
+  OrgFunction,
+  OrgFunctionWithDepts,
   Position,
   PositionCreateInput,
   PositionUpdateInput,
