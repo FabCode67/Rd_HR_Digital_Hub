@@ -21,6 +21,8 @@ import {
   LogOut,
   Sun,
   Moon,
+  Layers3,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,10 +33,12 @@ type DashboardShellProps = {
 
 const baseNavItems = [
   { href: "/dashboard/analytics",   label: "Analytics",    icon: BarChart3 },
+  { href: "/dashboard/functions",   label: "Functions",    icon: Layers3 },
   { href: "/dashboard/org",          label: "Organization", icon: Network },
   { href: "/dashboard/departments",  label: "Departments",  icon: Building2 },
   { href: "/dashboard/positions",    label: "Positions",    icon: LayoutDashboard },
   { href: "/dashboard/employees",    label: "Employees",    icon: Users },
+  { href: "/dashboard/leave",         label: "Leave",         icon: CalendarDays },
 ];
 
 const adminNavItems = [

@@ -10,6 +10,24 @@ from app.core.database import Base
 import enum
 
 
+class OrgFunction(Base):
+    """OrgFunction — top-level business function (e.g. Business, Support, Security)."""
+    __tablename__ = "org_functions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    color = Column(String(20), nullable=True, default="#06b6d4")  # hex colour for UI
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    departments = relationship("Department", back_populates="function", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<OrgFunction(id={self.id}, name='{self.name}')>"
+
+
 class Department(Base):
     """Department model - represents organizational departments."""
     __tablename__ = "departments"
@@ -18,12 +36,14 @@ class Department(Base):
     name = Column(String(255), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
+    function_id = Column(UUID(as_uuid=True), ForeignKey("org_functions.id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     parent = relationship("Department", remote_side=[id], backref="children")
+    function = relationship("OrgFunction", back_populates="departments")
     positions = relationship("Position", back_populates="department", cascade="all, delete-orphan")
     
     def __repr__(self):
@@ -106,6 +126,8 @@ class Employee(Base):
     form_responses = relationship("FormResponse", back_populates="employee", cascade="all, delete-orphan")
     education_records = relationship("EducationRecord", back_populates="employee", cascade="all, delete-orphan")
     employment_extensions = relationship("EmploymentExtension", back_populates="employee", cascade="all, delete-orphan")
+    leave_allocations = relationship("LeaveAllocation", back_populates="employee", cascade="all, delete-orphan")
+    leave_records = relationship("LeaveRecord", back_populates="employee", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Employee(id={self.id}, name='{self.full_name}', email='{self.email}')>"
@@ -290,3 +312,62 @@ class EmploymentExtension(Base):
 
     def __repr__(self):
         return f"<EmploymentExtension(id={self.id}, employee_id={self.employee_id}, type='{self.extension_type}')>"
+
+
+# ── Leave Management ──────────────────────────────────────────────────────────
+
+class LeaveType(str, enum.Enum):
+    ANNUAL      = "annual"       # Scheduled annual leave
+    SICK        = "sick"         # Medical / recovery
+    MATERNITY   = "maternity"    # 3 months
+    PATERNITY   = "paternity"    # 2 weeks
+    COMPASSIONATE = "compassionate"  # Bereavement / admin-defined
+
+
+class LeaveStatus(str, enum.Enum):
+    APPROVED  = "approved"   # Admin approved & days deducted
+    CANCELLED = "cancelled"  # Cancelled by admin
+
+
+class LeaveAllocation(Base):
+    """Tracks how many annual leave days each employee is entitled to per year."""
+    __tablename__ = "leave_allocations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)  # e.g. 2025
+    leave_type = Column(String(30), nullable=False)  # uses LeaveType values
+    total_days = Column(Integer, nullable=False)      # entitlement
+    used_days  = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="leave_allocations")
+    records  = relationship("LeaveRecord", back_populates="allocation", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<LeaveAllocation(employee_id={self.employee_id}, year={self.year}, type={self.leave_type})>"
+
+
+class LeaveRecord(Base):
+    """Individual leave taken by an employee — created by admin."""
+    __tablename__ = "leave_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id    = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    allocation_id  = Column(UUID(as_uuid=True), ForeignKey("leave_allocations.id"), nullable=True)
+    leave_type     = Column(String(30), nullable=False)
+    start_date     = Column(DateTime, nullable=False)
+    end_date       = Column(DateTime, nullable=False)
+    days_taken     = Column(Integer, nullable=False)
+    status         = Column(String(20), nullable=False, default="approved")
+    notes          = Column(Text, nullable=True)   # reason / admin notes
+    approved_by    = Column(String(255), nullable=True)  # admin name
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee   = relationship("Employee", back_populates="leave_records")
+    allocation = relationship("LeaveAllocation", back_populates="records")
+
+    def __repr__(self):
+        return f"<LeaveRecord(id={self.id}, employee_id={self.employee_id}, type={self.leave_type}, days={self.days_taken})>"

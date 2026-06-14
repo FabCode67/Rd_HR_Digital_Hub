@@ -579,6 +579,56 @@ export const educationAPI = {
   },
 };
 
+export const functionsAPI = {
+  async getAll(search?: string): Promise<OrgFunction[]> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : "";
+    return fetchAPI<OrgFunction[]>(`${API_PREFIX}/functions${params}`);
+  },
+  async getWithDepartments(): Promise<OrgFunctionWithDepts[]> {
+    return fetchAPI<OrgFunctionWithDepts[]>(`${API_PREFIX}/functions/with-departments`);
+  },
+  async create(payload: { name: string; description?: string; color?: string }): Promise<OrgFunction> {
+    return fetchAPI<OrgFunction>(`${API_PREFIX}/functions`, { method: "POST", body: JSON.stringify(payload) });
+  },
+  async update(id: string, payload: Partial<OrgFunction>): Promise<OrgFunction> {
+    return fetchAPI<OrgFunction>(`${API_PREFIX}/functions/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+  },
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`${API_PREFIX}/functions/${id}`, { method: "DELETE" });
+  },
+};
+
+export const leaveAPI = {
+  async getSummary(year?: number): Promise<any> {
+    const q = year ? `?year=${year}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/leave/summary${q}`);
+  },
+  async getEmployeeLeave(employeeId: string, year?: number): Promise<any> {
+    const q = year ? `?year=${year}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}${q}`);
+  },
+  async grantLeave(employeeId: string, payload: {
+    leave_type: string; start_date: string; end_date: string;
+    days_taken: number; notes?: string; override_total?: number;
+  }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}/grant`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+  async cancelLeave(recordId: string): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/leave/record/${recordId}`, { method: "DELETE" });
+  },
+  async updateAllocation(allocationId: string, totalDays: number): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/leave/allocation/${allocationId}`, {
+      method: "PUT", body: JSON.stringify({ total_days: totalDays }),
+    });
+  },
+  async initializeAnnual(employeeId: string, year?: number): Promise<any> {
+    const q = year ? `?year=${year}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}/initialize${q}`, { method: "POST" });
+  },
+};
+
 /**
  * Combined API client
  */
@@ -588,4 +638,6 @@ export const apiClient = {
   employee: employeeAPI,
   form: formAPI,
   education: educationAPI,
+  functions: functionsAPI,
+  leave: leaveAPI,
 };

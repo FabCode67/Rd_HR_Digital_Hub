@@ -1,5 +1,6 @@
 """Models package."""
 from app.models.models import (
+    OrgFunction,
     Department,
     Position,
     Employee,
@@ -15,9 +16,14 @@ from app.models.models import (
     EducationRecord,
     EmploymentType,
     EmploymentExtension,
+    LeaveType,
+    LeaveStatus,
+    LeaveAllocation,
+    LeaveRecord,
 )
 
 __all__ = [
+    "OrgFunction",
     "Department",
     "Position",
     "Employee",
@@ -33,4 +39,8 @@ __all__ = [
     "EducationRecord",
     "EmploymentType",
     "EmploymentExtension",
+    "LeaveType",
+    "LeaveStatus",
+    "LeaveAllocation",
+    "LeaveRecord",
 ]

@@ -92,11 +92,26 @@ export interface DepartmentHierarchyNode extends Department {
 /**
  * Department in organizational hierarchy
  */
+export interface OrgFunction {
+  id: UUID;
+  name: string;
+  description?: string | null;
+  color?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrgFunctionWithDepts extends OrgFunction {
+  departments: Department[];
+}
+
 export interface Department {
   id: UUID;
   name: string;
   description?: string;
   parent_id?: UUID;
+  function_id?: UUID | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -106,6 +121,7 @@ export interface DepartmentCreateInput {
   name: string;
   description?: string;
   parent_id?: UUID | null;
+  function_id?: UUID | null;
   is_active?: boolean;
 }
 
@@ -113,6 +129,7 @@ export interface DepartmentUpdateInput {
   name?: string;
   description?: string;
   parent_id?: UUID | null;
+  function_id?: UUID | null;
   is_active?: boolean;
 }
 

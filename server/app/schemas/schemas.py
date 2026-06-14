@@ -9,6 +9,33 @@ from app.models import EmployeeStatus, UserRole, EmploymentType
 
 
 # ============================================================================
+# ORG FUNCTION SCHEMAS
+# ============================================================================
+
+class OrgFunctionBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    color: Optional[str] = "#06b6d4"
+    is_active: bool = True
+
+class OrgFunctionCreate(OrgFunctionBase):
+    pass
+
+class OrgFunctionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class OrgFunctionResponse(OrgFunctionBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    class Config:
+        from_attributes = True
+
+
+# ============================================================================
 # DEPARTMENT SCHEMAS
 # ============================================================================
 
@@ -17,6 +44,7 @@ class DepartmentBase(BaseModel):
     name: str
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
+    function_id: Optional[UUID] = None
     is_active: bool = True
 
 
@@ -30,12 +58,14 @@ class DepartmentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
+    function_id: Optional[UUID] = None
     is_active: Optional[bool] = None
 
 
 class DepartmentResponse(DepartmentBase):
     """Schema for Department response."""
     id: UUID
+    function_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
