@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import PositionNode from "./PositionNode";
 import { PositionTreeNode } from "@/lib/types";
 
@@ -11,9 +11,10 @@ interface PositionTreeProps {
   departmentMap: Record<string, string>;
 }
 
-const CARD_W  = 176;
-const CARD_GAP = 20;
-const DROP_H  = 24;
+// Must match PositionNode constants exactly
+const CARD_W   = 140;
+const CARD_GAP = 12;
+const DROP_H   = 16;
 
 function subtreeWidth(node: PositionTreeNode): number {
   const children = node.children ?? [];
@@ -26,13 +27,29 @@ function subtreeWidth(node: PositionTreeNode): number {
 export default function PositionTree({
   positions, level = 0, onPositionUpdated, departmentMap,
 }: PositionTreeProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-center the scroll position when the tree first renders
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Small delay lets the browser finish layout before we measure
+    const timer = setTimeout(() => {
+      const scrollWidth  = el.scrollWidth;
+      const clientWidth  = el.clientWidth;
+      if (scrollWidth > clientWidth) {
+        el.scrollLeft = (scrollWidth - clientWidth) / 2;
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [positions]);
+
   if (!positions.length) return null;
 
   const childWidths = positions.map(subtreeWidth);
   const totalWidth  = childWidths.reduce((a, b) => a + b, 0)
     + CARD_GAP * (positions.length - 1);
 
-  // Card centres relative to left edge of the total row
   let cursor = 0;
   const cardCentres = childWidths.map(w => {
     const centre = cursor + w / 2;
@@ -44,8 +61,7 @@ export default function PositionTree({
   const barRight = cardCentres[cardCentres.length - 1];
 
   return (
-    // Outer: allow horizontal scroll if the tree is wider than the viewport
-    <div className="overflow-x-auto pb-6">
+    <div ref={scrollRef} className="overflow-x-auto pb-4">
       <div style={{ width: totalWidth, minWidth: totalWidth }} className="relative">
         {/* SVG connector lines at the top of this level */}
         {positions.length > 0 && (
@@ -55,31 +71,29 @@ export default function PositionTree({
             className="absolute top-0 left-0 pointer-events-none overflow-visible"
             style={{ zIndex: 0 }}
           >
-            {/* Horizontal bar spanning all siblings */}
             {positions.length > 1 && (
               <line
                 x1={barLeft} y1={0}
                 x2={barRight} y2={0}
-                strokeWidth={2}
-                strokeDasharray="5 3"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
                 className="stroke-slate-300 dark:stroke-slate-600"
               />
             )}
-            {/* Vertical drop to each card */}
             {cardCentres.map((cx, i) => (
               <line
                 key={i}
                 x1={cx} y1={0}
                 x2={cx} y2={DROP_H}
-                strokeWidth={2}
-                strokeDasharray="5 3"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
                 className="stroke-slate-300 dark:stroke-slate-600"
               />
             ))}
           </svg>
         )}
 
-        {/* Node row — no wrapping, each node owns its column width */}
+        {/* Node row */}
         <div
           className="flex flex-row items-start flex-nowrap"
           style={{ gap: CARD_GAP, paddingTop: DROP_H }}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { Department } from "@/lib/types";
 import { Loader2, Network } from "lucide-react";
@@ -14,6 +14,19 @@ export default function DepartmentTree({ rootDepartments }: DepartmentTreeProps)
   const [roots, setRoots] = useState<Department[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Auto-center the tree canvas horizontally on load
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || !roots?.length) return;
+    const timer = setTimeout(() => {
+      if (el.scrollWidth > el.clientWidth) {
+        el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [roots]);
 
   useEffect(() => {
     let mounted = true;
@@ -73,7 +86,7 @@ export default function DepartmentTree({ rootDepartments }: DepartmentTreeProps)
       </div>
 
       {/* Tree canvas */}
-      <div className="overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+      <div ref={canvasRef} className="overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
         <div className="min-h-[300px] p-6">
           {loading && (
             <div className="flex items-center justify-center py-16">

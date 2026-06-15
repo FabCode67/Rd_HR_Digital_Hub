@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { Department, Employee, Position, PositionLevel } from "@/lib/types";
 import {
   Loader2, Building2, BriefcaseBusiness, Users,
   BadgeCheck, TrendingUp, AlertCircle,
+  FileSpreadsheet, Presentation, Download,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -156,8 +157,10 @@ export default function AnalyticsDashboard() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions,   setPositions]   = useState<Position[]>([]);
   const [employees,   setEmployees]   = useState<Employee[]>([]);
+  const [leaveSummary, setLeaveSummary] = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
+  const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
 
   // Pie active slice state
   const [vacancyActive,   setVacancyActive]   = useState(0);
@@ -176,6 +179,11 @@ export default function AnalyticsDashboard() {
         ]);
         if (!mounted) return;
         setDepartments(depts); setPositions(pos); setEmployees(emps);
+        // Load leave summary (non-critical)
+        try {
+          const ls = await apiClient.leave.getSummary(new Date().getFullYear());
+          if (mounted) setLeaveSummary(ls);
+        } catch { /* non-critical */ }
       } catch (err) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : "Failed to load analytics");
@@ -278,6 +286,29 @@ export default function AnalyticsDashboard() {
     };
   }, [departments, positions, employees]);
 
+  // ── export ───────────────────────────────────────────────────────
+  const exportData = useMemo(() => ({
+    departments, positions, employees, leaveSummary, metrics: a,
+  }), [departments, positions, employees, leaveSummary, a]);
+
+  const handleExcel = useCallback(async () => {
+    setExporting("excel");
+    try {
+      const { exportExcel } = await import("@/lib/analyticsExport");
+      await exportExcel(exportData);
+    } catch (e) { console.error("Excel export failed:", e); }
+    finally { setExporting(null); }
+  }, [exportData]);
+
+  const handlePptx = useCallback(async () => {
+    setExporting("pptx");
+    try {
+      const { exportPowerPoint } = await import("@/lib/analyticsExport");
+      await exportPowerPoint(exportData);
+    } catch (e) { console.error("PPTX export failed:", e); }
+    finally { setExporting(null); }
+  }, [exportData]);
+
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
@@ -285,21 +316,47 @@ export default function AnalyticsDashboard() {
 
       {/* Hero header */}
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-xl">
-        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Analytics Dashboard</p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Organization Overview</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-300">
-          Live metrics from departments, positions, and employees — updated on every page load.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-300">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            {departments.length} Departments
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            {positions.length} Positions
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-            {employees.length} Employees
-          </span>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Analytics Dashboard</p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Organization Overview</h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-300">
+              Live metrics from departments, positions, and employees — updated on every page load.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-300">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{departments.length} Departments</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{positions.length} Positions</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{employees.length} Employees</span>
+            </div>
+          </div>
+          {/* Export buttons */}
+          {!loading && !error && (
+            <div className="flex flex-col gap-2 shrink-0">
+              <p className="text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-1">
+                <Download className="h-3 w-3" /> Export Report
+              </p>
+              <button
+                onClick={handleExcel}
+                disabled={!!exporting}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-60 transition-colors"
+              >
+                {exporting === "excel"
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <FileSpreadsheet className="h-4 w-4" />}
+                {exporting === "excel" ? "Generating…" : "Excel (.xlsx)"}
+              </button>
+              <button
+                onClick={handlePptx}
+                disabled={!!exporting}
+                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/40 bg-orange-600/20 px-4 py-2.5 text-sm font-semibold text-orange-300 hover:bg-orange-600/30 disabled:opacity-60 transition-colors"
+              >
+                {exporting === "pptx"
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Presentation className="h-4 w-4" />}
+                {exporting === "pptx" ? "Generating…" : "PowerPoint (.pptx)"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -10,10 +10,10 @@ import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const CARD_W  = 176; // px — matches w-44
-const CARD_GAP = 20; // px — gap between sibling columns
-const STEM_H  = 24;  // px — vertical line from card bottom to h-bar
-const DROP_H  = 24;  // px — vertical line from h-bar to child card top
+const CARD_W  = 140; // px — compact card width
+const CARD_GAP = 12; // px — tighter gap between sibling columns
+const STEM_H  = 16;  // px — vertical line from card bottom to h-bar
+const DROP_H  = 16;  // px — vertical line from h-bar to child card top
 
 // ── Subtree width helper ───────────────────────────────────────────────────────
 // A leaf owns exactly CARD_W.
@@ -162,7 +162,7 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
         onMouseEnter={onHover}
         style={{ width: CARD_W }}
         className={cn(
-          "relative cursor-pointer rounded-2xl border-2 px-3 py-3 text-center shadow-sm",
+          "relative cursor-pointer rounded-xl border-2 px-2 py-2 text-center shadow-sm",
           "transition-all duration-200 hover:scale-[1.03] hover:shadow-md flex-shrink-0",
           isVacant
             ? "border-rose-300 bg-white dark:bg-slate-800 dark:border-rose-700"
@@ -171,41 +171,41 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
         )}
       >
         {isVacant && (
-          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-rose-100 dark:bg-rose-900/60 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-300">
-            <AlertCircle size={9} /> Vacant
+          <span className="absolute -top-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 border border-rose-200 dark:border-rose-800 px-1.5 py-0 text-[8px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-300">
+            <AlertCircle size={7} /> Vacant
           </span>
         )}
         {hasChildren && (
           <button
             onClick={e => { e.stopPropagation(); setExpanded(s => !s); }}
             className={cn(
-              "absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800",
+              "absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800",
               isVacant ? "border-rose-300 text-rose-500" : "border-sky-400 text-sky-600"
             )}
           >
-            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           </button>
         )}
-        <div className="space-y-1.5">
-          <p className={cn("text-[12px] font-bold leading-tight", isVacant ? "text-slate-800 dark:text-slate-100" : "text-white")}>
+        <div className="space-y-1">
+          <p className={cn("text-[11px] font-bold leading-tight", isVacant ? "text-slate-800 dark:text-slate-100" : "text-white")}>
             {node.title}
           </p>
           {employeeName && (
             <div className={cn("flex items-center justify-center gap-1", isVacant ? "text-slate-600 dark:text-slate-300" : "text-sky-100")}>
-              <UserCheck size={11} />
-              <span className="text-[11px] font-medium truncate max-w-[110px]">{employeeName}</span>
+              <UserCheck size={10} />
+              <span className="text-[10px] font-medium truncate max-w-[90px]">{employeeName}</span>
             </div>
           )}
-          <div className="space-y-0.5">
-            <p className={cn("text-[10px] font-medium", isVacant ? "text-slate-500 dark:text-slate-400" : "text-sky-100")}>
+          <div className="space-y-0">
+            <p className={cn("text-[9px] font-medium", isVacant ? "text-slate-500 dark:text-slate-400" : "text-sky-100")}>
               {node.level}
             </p>
             {node.band && (
-              <p className={cn("text-[10px]", isVacant ? "text-slate-400" : "text-sky-100/80")}>{node.band}</p>
+              <p className={cn("text-[9px]", isVacant ? "text-slate-400" : "text-sky-100/80")}>{node.band}</p>
             )}
             {departmentName && (
               <p className={cn(
-                "text-[10px] font-medium truncate rounded px-1 py-0.5 mt-0.5",
+                "text-[9px] font-medium truncate rounded px-1 py-0 mt-0.5",
                 isVacant ? "bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" : "bg-white/20 text-white/90"
               )}>
                 {departmentName}
