@@ -118,6 +118,7 @@ class Employee(Base):
     # Past employment
     past_employer = Column(String(255), nullable=True)
     past_position = Column(String(255), nullable=True)
+    gender        = Column(String(10), nullable=True)  # male | female
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -128,6 +129,8 @@ class Employee(Base):
     employment_extensions = relationship("EmploymentExtension", back_populates="employee", cascade="all, delete-orphan")
     leave_allocations = relationship("LeaveAllocation", back_populates="employee", cascade="all, delete-orphan")
     leave_records = relationship("LeaveRecord", back_populates="employee", cascade="all, delete-orphan")
+    performance_reviews = relationship("PerformanceReview", back_populates="employee", cascade="all, delete-orphan")
+    exit_record = relationship("EmployeeExit", back_populates="employee", uselist=False, cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Employee(id={self.id}, name='{self.full_name}', email='{self.email}')>"
@@ -371,3 +374,112 @@ class LeaveRecord(Base):
 
     def __repr__(self):
         return f"<LeaveRecord(id={self.id}, employee_id={self.employee_id}, type={self.leave_type}, days={self.days_taken})>"
+
+
+# ── Performance Management ────────────────────────────────────────────────
+
+class ReviewCycle(str, enum.Enum):
+    MID_YEAR = "mid_year"   # June / July
+    END_YEAR = "end_year"   # December / January
+
+
+class PerformanceRating(int, enum.Enum):
+    OUTSTANDING            = 5   # 5 — Outstanding
+    EXCEEDED_EXPECTATIONS  = 4   # 4 — Exceeded Expectations
+    SUCCEEDED              = 3   # 3 — Succeeded
+    MEETS_SOME             = 2   # 2 — Meets Some Expectations
+    UNSATISFACTORY         = 1   # 1 — Unsatisfactory
+
+
+class PerformanceReview(Base):
+    """
+    One performance review per employee per cycle per year.
+    Admin rates the employee on overall performance + individual KPI goals.
+    """
+    __tablename__ = "performance_reviews"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False, index=True)
+    year        = Column(Integer, nullable=False, index=True)   # e.g. 2025
+    cycle       = Column(String(20), nullable=False)            # mid_year | end_year
+    rating      = Column(Integer, nullable=False)               # 1 – 5
+    comments    = Column(Text, nullable=True)                   # overall admin comments
+    reviewed_by = Column(String(255), nullable=True)            # admin full name
+    reviewed_at = Column(DateTime, nullable=True)               # when submitted
+    is_draft    = Column(Boolean, default=True)                 # True until admin finalises
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="performance_reviews")
+    goals    = relationship("PerformanceGoal", back_populates="review",
+                            cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return (f"<PerformanceReview(employee_id={self.employee_id}, "
+                f"year={self.year}, cycle={self.cycle}, rating={self.rating})>")
+
+
+class PerformanceGoal(Base):
+    """
+    Individual KPI / goal within a performance review.
+    Each goal has its own rating and weight.
+    """
+    __tablename__ = "performance_goals"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    review_id   = Column(UUID(as_uuid=True), ForeignKey("performance_reviews.id"),
+                         nullable=False, index=True)
+    title       = Column(String(255), nullable=False)   # e.g. "Customer Satisfaction"
+    description = Column(Text, nullable=True)
+    weight      = Column(Integer, nullable=False, default=20)  # % weight (all goals sum to 100)
+    rating      = Column(Integer, nullable=True)               # 1 – 5 for this goal
+    comments    = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    review = relationship("PerformanceReview", back_populates="goals")
+
+    def __repr__(self):
+        return f"<PerformanceGoal(id={self.id}, title='{self.title}', rating={self.rating})>"
+
+
+# ── Employee Exit ────────────────────────────────────────────────────
+
+class ExitReason(str, enum.Enum):
+    RESIGNATION     = "resignation"      # Employee chose to leave
+    TERMINATION     = "termination"      # Employer-initiated
+    END_OF_CONTRACT = "end_of_contract"  # Temporary contract ended
+
+
+class ExitType(str, enum.Enum):
+    REGRETTABLE     = "regrettable"      # Bank wanted to keep this person
+    NON_REGRETTABLE = "non_regrettable"  # Bank is fine with them leaving
+
+
+class EmployeeExit(Base):
+    """
+    Records an employee's exit from the organisation.
+    On exit: position is vacated, employee is set INACTIVE.
+    """
+    __tablename__ = "employee_exits"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    employee_id    = Column(UUID(as_uuid=True), ForeignKey("employees.id"),
+                            nullable=False, index=True, unique=True)
+    exit_date      = Column(DateTime, nullable=False)
+    exit_reason    = Column(String(30), nullable=False)   # resignation|termination|end_of_contract
+    exit_type      = Column(String(20), nullable=False)   # regrettable|non_regrettable
+    position_id    = Column(UUID(as_uuid=True), ForeignKey("positions.id"), nullable=True)
+    position_title = Column(String(255), nullable=True)   # snapshot at exit
+    next_move      = Column(String(255), nullable=True)   # optional: where they are going
+    comments       = Column(Text, nullable=True)
+    processed_by   = Column(String(255), nullable=True)   # admin full name
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="exit_record")
+    position = relationship("Position")
+
+    def __repr__(self):
+        return (f"<EmployeeExit(employee_id={self.employee_id}, "
+                f"exit_date={self.exit_date}, reason={self.exit_reason})>")

@@ -9,6 +9,8 @@ from app.routers import departments, positions, employees, forms
 from app.routers import education as education_router
 from app.routers import functions as functions_router
 from app.routers import leave as leave_router
+from app.routers import performance as performance_router
+from app.routers import exits as exits_router
 
 
 def create_app() -> FastAPI:
@@ -44,6 +46,8 @@ def create_app() -> FastAPI:
     app.include_router(education_router.router, prefix=prefix)
     app.include_router(functions_router.router, prefix=prefix)
     app.include_router(leave_router.router, prefix=prefix)
+    app.include_router(performance_router.router, prefix=prefix)
+    app.include_router(exits_router.router, prefix=prefix)
 
     from app.routers import auth as auth_router
     app.include_router(auth_router.router, prefix=prefix)

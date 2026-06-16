@@ -631,6 +631,50 @@ export const leaveAPI = {
   },
 };
 
+export const performanceAPI = {
+  async getSummary(year?: number, cycle?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (year)  params.set("year",  String(year));
+    if (cycle) params.set("cycle", cycle);
+    const q = params.toString() ? `?${params}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/performance/summary${q}`);
+  },
+  async getEmployeeReviews(employeeId: string, year?: number): Promise<any> {
+    const q = year ? `?year=${year}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/performance/employee/${employeeId}${q}`);
+  },
+  async createReview(payload: {
+    employee_id: string; year: number; cycle: string;
+    rating: number; comments?: string;
+    goals?: { title: string; description?: string; weight: number; rating?: number; comments?: string }[];
+  }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/performance`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+  async updateReview(reviewId: string, payload: { rating?: number; comments?: string; is_draft?: boolean }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/performance/${reviewId}`, {
+      method: "PUT", body: JSON.stringify(payload),
+    });
+  },
+  async deleteReview(reviewId: string): Promise<void> {
+    return fetchAPI<void>(`${API_PREFIX}/performance/${reviewId}`, { method: "DELETE" });
+  },
+  async addGoal(reviewId: string, payload: { title: string; description?: string; weight: number; rating?: number; comments?: string }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/performance/${reviewId}/goals`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+  async updateGoal(goalId: string, payload: { title?: string; description?: string; weight?: number; rating?: number; comments?: string }): Promise<any> {
+    return fetchAPI<any>(`${API_PREFIX}/performance/goals/${goalId}`, {
+      method: "PUT", body: JSON.stringify(payload),
+    });
+  },
+  async deleteGoal(goalId: string): Promise<void> {
+    return fetchAPI<void>(`${API_PREFIX}/performance/goals/${goalId}`, { method: "DELETE" });
+  },
+};
+
 /**
  * Combined API client
  */
@@ -642,4 +686,37 @@ export const apiClient = {
   education: educationAPI,
   functions: functionsAPI,
   leave: leaveAPI,
+  performance: performanceAPI,
+  exits: {
+    async list(params?: { year?: number; exit_reason?: string; exit_type?: string }): Promise<any> {
+      const q = new URLSearchParams();
+      if (params?.year)        q.set("year",        String(params.year));
+      if (params?.exit_reason) q.set("exit_reason", params.exit_reason);
+      if (params?.exit_type)   q.set("exit_type",   params.exit_type);
+      const qs = q.toString() ? `?${q}` : "";
+      return fetchAPI<any>(`${API_PREFIX}/exits${qs}`);
+    },
+    async getEmployee(employeeId: string): Promise<any> {
+      return fetchAPI<any>(`${API_PREFIX}/exits/employee/${employeeId}`);
+    },
+    async process(employeeId: string, payload: {
+      exit_date: string; exit_reason: string; exit_type: string;
+      next_move?: string; comments?: string;
+    }): Promise<any> {
+      return fetchAPI<any>(`${API_PREFIX}/exits/employee/${employeeId}`, {
+        method: "POST", body: JSON.stringify(payload),
+      });
+    },
+    async update(employeeId: string, payload: {
+      exit_date?: string; exit_reason?: string; exit_type?: string;
+      next_move?: string; comments?: string;
+    }): Promise<any> {
+      return fetchAPI<any>(`${API_PREFIX}/exits/employee/${employeeId}`, {
+        method: "PUT", body: JSON.stringify(payload),
+      });
+    },
+    async undo(employeeId: string): Promise<any> {
+      return fetchAPI<any>(`${API_PREFIX}/exits/employee/${employeeId}`, { method: "DELETE" });
+    },
+  },
 };

@@ -7,11 +7,12 @@ import {
   EmployeeStatus, EmployeeUpdateInput, Position,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp, Camera } from "lucide-react";
+import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp, Camera, LogOut as ExitIcon } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
 import CareerTimeline from "./CareerTimeline";
 import { useAuth } from "@/contexts/AuthContext";
+import { ExitFormModal } from "@/components/exits/ExitManagement";
 
 type Stats = { total: number; active: number; inactive: number; suspended: number; terminated: number };
 type FormState = {
@@ -163,6 +164,9 @@ export default function EmployeeManagement() {
 
   // Avatar upload state (for edit drawer)
   const [avatarEmployee, setAvatarEmployee] = useState<Employee | null>(null);
+
+  // Exit state
+  const [exitEmployee, setExitEmployee] = useState<Employee | null>(null);
 
   const filtered = useMemo(() => {
     let list = employees;
@@ -455,6 +459,12 @@ export default function EmployeeManagement() {
                           className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-300 transition-colors">
                           <Calendar className="h-3 w-3" /> Position
                         </button>
+                        {emp.status === "ACTIVE" && (
+                          <button onClick={() => setExitEmployee(emp)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-400 transition-colors">
+                            <ExitIcon className="h-3 w-3" /> Exit
+                          </button>
+                        )}
                         <button onClick={() => setDeleteTarget(emp)}
                           className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400 transition-colors">
                           <Trash2 className="h-3 w-3" /> Delete
@@ -757,6 +767,19 @@ export default function EmployeeManagement() {
             </div>
           </div>
         </div>
+      )}
+      {/* Exit modal */}
+      {exitEmployee && (
+        <ExitFormModal
+          employee={{
+            id:               exitEmployee.id,
+            full_name:        exitEmployee.full_name,
+            employment_type:  exitEmployee.employment_type,
+            position_title:   undefined,
+          }}
+          onSuccess={() => { setExitEmployee(null); void load(); }}
+          onClose={() => setExitEmployee(null)}
+        />
       )}
     </section>
   );

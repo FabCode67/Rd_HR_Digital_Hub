@@ -1,22 +1,7 @@
-import { Geist_Mono, Space_Grotesk, Playfair_Display } from "next/font/google"
-
 import "./globals.css" // @ts-ignore
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils";
-
-const sans = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans" })
-
-const display = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["600", "700"],
-})
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
 
 export default function RootLayout({
   children,
@@ -27,13 +12,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontMono.variable,
-        display.variable,
-        "font-sans",
-        sans.variable
-      )}
+      className={cn("antialiased")}
     >
       <body>
         <AuthProvider>

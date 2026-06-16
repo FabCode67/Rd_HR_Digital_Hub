@@ -20,6 +20,13 @@ from app.models.models import (
     LeaveStatus,
     LeaveAllocation,
     LeaveRecord,
+    ReviewCycle,
+    PerformanceRating,
+    PerformanceReview,
+    PerformanceGoal,
+    ExitReason,
+    ExitType,
+    EmployeeExit,
 )
 
 __all__ = [
@@ -43,4 +50,11 @@ __all__ = [
     "LeaveStatus",
     "LeaveAllocation",
     "LeaveRecord",
+    "ReviewCycle",
+    "PerformanceRating",
+    "PerformanceReview",
+    "PerformanceGoal",
+    "ExitReason",
+    "ExitType",
+    "EmployeeExit",
 ]
