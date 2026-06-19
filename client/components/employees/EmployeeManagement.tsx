@@ -21,6 +21,7 @@ type FormState = {
   employment_type: "permanent" | "temporary";
   contract_end_date: string;
   past_employer: string; past_position: string;
+  gender: string;
 };
 type PosAssign = { departmentId: string; positionId: string; startDate: string };
 
@@ -34,7 +35,7 @@ const CORP_TITLES = [
 const emptyForm: FormState = {
   full_name: "", email: "", phone: "", date_of_birth: "", national_id: "",
   status: "ACTIVE", employment_type: "permanent", contract_end_date: "",
-  past_employer: "", past_position: "",
+  past_employer: "", past_position: "", gender: "",
 };
 const emptyAssign: PosAssign = { departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10) };
 
@@ -219,6 +220,7 @@ export default function EmployeeManagement() {
       employment_type: e.employment_type ?? "permanent",
       contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
       past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
+      gender: (e as any).gender ?? "",
     });
     setAvatarEmployee(e);
     setEditingId(e.id); setDrawerOpen(true);
@@ -239,6 +241,7 @@ export default function EmployeeManagement() {
         ? new Date(form.contract_end_date).toISOString() : undefined,
       past_employer: form.past_employer.trim() || undefined,
       past_position: form.past_position.trim() || undefined,
+      gender: form.gender || undefined,
     };
     try {
       if (editingId) {
@@ -531,6 +534,30 @@ export default function EmployeeManagement() {
                   <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
                     {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Gender <span className="text-red-500">*</span></label>
+                  <div className="flex gap-3">
+                    {["male","female"].map(g => (
+                      <label key={g} className={cn(
+                        "flex flex-1 items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all",
+                        form.gender === g
+                          ? g === "male"
+                            ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30"
+                            : "border-pink-400 bg-pink-50 dark:bg-pink-950/30"
+                          : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                      )}>
+                        <input type="radio" name="gender" value={g} checked={form.gender === g}
+                          onChange={() => setForm(f => ({ ...f, gender: g }))} className="sr-only" />
+                        <span className={cn("text-sm font-semibold capitalize",
+                          form.gender === g
+                            ? g === "male" ? "text-blue-700 dark:text-blue-300" : "text-pink-700 dark:text-pink-300"
+                            : "text-slate-700 dark:text-slate-300")}>
+                          {g === "male" ? "♂ Male" : "♀ Female"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 

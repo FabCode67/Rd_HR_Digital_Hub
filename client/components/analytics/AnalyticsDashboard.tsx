@@ -157,10 +157,15 @@ export default function AnalyticsDashboard() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions,   setPositions]   = useState<Position[]>([]);
   const [employees,   setEmployees]   = useState<Employee[]>([]);
-  const [leaveSummary, setLeaveSummary] = useState<any>(null);
+  const [leaveSummary, setLeaveSummary]           = useState<any>(null);
+  const [performanceSummary, setPerformanceSummary] = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
   const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
+
+  // Date filter for exports
+  const [exportFrom, setExportFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [exportTo,   setExportTo]   = useState(() => new Date().toISOString().slice(0,10));
 
   // Pie active slice state
   const [vacancyActive,   setVacancyActive]   = useState(0);
@@ -179,10 +184,14 @@ export default function AnalyticsDashboard() {
         ]);
         if (!mounted) return;
         setDepartments(depts); setPositions(pos); setEmployees(emps);
-        // Load leave summary (non-critical)
+        // Load leave + performance summaries (non-critical)
         try {
           const ls = await apiClient.leave.getSummary(new Date().getFullYear());
           if (mounted) setLeaveSummary(ls);
+        } catch { /* non-critical */ }
+        try {
+          const ps = await apiClient.performance.getSummary(new Date().getFullYear());
+          if (mounted) setPerformanceSummary(ps);
         } catch { /* non-critical */ }
       } catch (err) {
         if (!mounted) return;
@@ -288,26 +297,28 @@ export default function AnalyticsDashboard() {
 
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
-    departments, positions, employees, leaveSummary, metrics: a,
-  }), [departments, positions, employees, leaveSummary, a]);
+    departments, positions, employees, leaveSummary, performanceSummary, metrics: a,
+  }), [departments, positions, employees, leaveSummary, performanceSummary, a]);
+
+  const exportFilter = useMemo(() => ({ from: exportFrom, to: exportTo }), [exportFrom, exportTo]);
 
   const handleExcel = useCallback(async () => {
     setExporting("excel");
     try {
       const { exportExcel } = await import("@/lib/analyticsExport");
-      await exportExcel(exportData);
+      await exportExcel(exportData, exportFilter);
     } catch (e) { console.error("Excel export failed:", e); }
     finally { setExporting(null); }
-  }, [exportData]);
+  }, [exportData, exportFilter]);
 
   const handlePptx = useCallback(async () => {
     setExporting("pptx");
     try {
       const { exportPowerPoint } = await import("@/lib/analyticsExport");
-      await exportPowerPoint(exportData);
+      await exportPowerPoint(exportData, exportFilter);
     } catch (e) { console.error("PPTX export failed:", e); }
     finally { setExporting(null); }
-  }, [exportData]);
+  }, [exportData, exportFilter]);
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -331,28 +342,31 @@ export default function AnalyticsDashboard() {
           </div>
           {/* Export buttons */}
           {!loading && !error && (
-            <div className="flex flex-col gap-2 shrink-0">
+            <div className="flex flex-col gap-2 shrink-0 min-w-[220px]">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-1">
                 <Download className="h-3 w-3" /> Export Report
               </p>
-              <button
-                onClick={handleExcel}
-                disabled={!!exporting}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-60 transition-colors"
-              >
-                {exporting === "excel"
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <FileSpreadsheet className="h-4 w-4" />}
+              {/* Date filter */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5 uppercase tracking-wide">From</p>
+                  <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-400" />
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5 uppercase tracking-wide">To</p>
+                  <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-400" />
+                </div>
+              </div>
+              <button onClick={handleExcel} disabled={!!exporting}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-60 transition-colors">
+                {exporting === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
                 {exporting === "excel" ? "Generating…" : "Excel (.xlsx)"}
               </button>
-              <button
-                onClick={handlePptx}
-                disabled={!!exporting}
-                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/40 bg-orange-600/20 px-4 py-2.5 text-sm font-semibold text-orange-300 hover:bg-orange-600/30 disabled:opacity-60 transition-colors"
-              >
-                {exporting === "pptx"
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Presentation className="h-4 w-4" />}
+              <button onClick={handlePptx} disabled={!!exporting}
+                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/40 bg-orange-600/20 px-4 py-2.5 text-sm font-semibold text-orange-300 hover:bg-orange-600/30 disabled:opacity-60 transition-colors">
+                {exporting === "pptx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}
                 {exporting === "pptx" ? "Generating…" : "PowerPoint (.pptx)"}
               </button>
             </div>

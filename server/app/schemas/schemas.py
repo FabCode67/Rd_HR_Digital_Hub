@@ -168,6 +168,7 @@ class EmployeeBase(BaseModel):
     # Past employment
     past_employer: Optional[str] = None
     past_position: Optional[str] = None
+    gender: Optional[str] = None  # male | female
 
 
 class EmployeeCreate(EmployeeBase):
@@ -188,6 +189,7 @@ class EmployeeUpdate(BaseModel):
     probation_end_date: Optional[datetime] = None
     past_employer: Optional[str] = None
     past_position: Optional[str] = None
+    gender: Optional[str] = None
 
 
 class EmployeeResponse(EmployeeBase):
