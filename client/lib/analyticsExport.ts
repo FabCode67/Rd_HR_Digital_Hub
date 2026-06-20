@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * analyticsExport.ts
@@ -487,21 +487,19 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 4: Staff by Department ───────────────────────────────────────────
-  {
-    const s = addSlide("Staff by Department", "Number of filled positions per department");
+  if (sections.departments.enabled) {
+    const s = addSlide("Staff by Department", `Number of filled positions per department · ${periodLabel("departments")}`);
     const rows = staffByDept.map((r, i) => ({ name: r.name, value: r.count, color: BAR_COLORS[i % BAR_COLORS.length] }));
     if (rows.length > 0) {
       hBar(s, rows.map(r => ({ name: r.name, value: r.value })), 0.22, 1.2, W - 0.44, 4.5, C.cyan);
     } else {
-      s.addText("No staffed positions found. Assign employees to positions to view this chart.", {
-        x: 0.22, y: 3.5, w: W - 0.44, h: 0.4, fontSize: 11, color: C.dark, fontFace: "Arial", align: "center",
-      });
+      s.addText("No staffed positions found.", { x: 0.22, y: 3.5, w: W - 0.44, h: 0.4, fontSize: 11, color: C.dark, fontFace: "Arial", align: "center" });
     }
     interpretation(s, interpret("staff_by_dept", { rows: staffByDept }));
   }
 
   // ── SLIDE 5: Position Fill Rate by Department ──────────────────────────────
-  {
+  if (sections.positions.enabled) {
     const s = addSlide("Position Fill Rate by Department", "Filled vs vacant positions across departments");
     const maxVal = Math.max(...m.deptBar.map(r => r.Filled + r.Vacant), 1);
     const chartX = 0.22, chartY = 1.2, chartW = W - 0.44, chartH = 4.6;
@@ -530,7 +528,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 6: Employment Contract Split ────────────────────────────────────
-  {
+  if (sections.employees.enabled) {
     const s = addSlide("Contract Type Distribution", "Permanent vs temporary employment contracts");
     const total = permanent + temporary || 1;
 
@@ -559,7 +557,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 7: Leave by Department ──────────────────────────────────────────
-  {
+  if (sections.leave.enabled) {
     const s = addSlide("Leave Days by Department", "Total leave days taken per department · All leave types combined");
 
     if (leaveByDeptRows.length > 0) {
@@ -583,7 +581,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 8: Leave Types Analysis ─────────────────────────────────────────
-  {
+  if (sections.leave.enabled) {
     const s = addSlide("Leave Utilisation Analysis", "Breakdown by leave type · Annual vs sick vs statutory");
 
     const leaveRows = [
@@ -630,7 +628,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 9: Performance by Department ────────────────────────────────────
-  {
+  if (sections.performance.enabled) {
     const s = addSlide("Performance Ratings", "Average performance scores by department · Scale: 1 (Unsatisfactory) to 5 (Outstanding)");
 
     const ratingLabels: Record<number, string> = {
@@ -688,7 +686,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 10: Organisational Structure Summary ─────────────────────────────
-  {
+  if (sections.departments.enabled) {
     const s = addSlide("Organisational Structure", "Departments, hierarchy and position summary");
 
     addTable(s, 0.22, 1.2, W - 0.44,
@@ -711,7 +709,7 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   }
 
   // ── SLIDE 11: Closing ──────────────────────────────────────────────────────
-  {
+  if (Object.values(sections).some(s => s.enabled)) {
     const s = pptx.addSlide();
     s.background = { color: C.navy };
     s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.55, h: H, fill: { color: C.cyan } });
@@ -834,7 +832,7 @@ export async function exportExcel(data: AnalyticsData, sections: SectionConfig) 
   }
 
   // 4. Departments
-  XLSX.utils.book_append_sheet(wb, makeSheet(
+  if (sections.departments.enabled) XLSX.utils.book_append_sheet(wb, makeSheet(
     departments.map((d: any) => [
       d.name, d.description ?? "",
       departments.find((p: any) => p.id === d.parent_id)?.name ?? "Root",
@@ -845,7 +843,7 @@ export async function exportExcel(data: AnalyticsData, sections: SectionConfig) 
   ), "Departments");
 
   // 5. Dept Fill Breakdown
-  XLSX.utils.book_append_sheet(wb, makeSheet(
+  if (sections.positions.enabled) XLSX.utils.book_append_sheet(wb, makeSheet(
     [...m.deptBar.map(r => [
       r.name, r.Filled, r.Vacant, r.Filled + r.Vacant,
       parseFloat(((r.Filled / Math.max(r.Filled + r.Vacant, 1)) * 100).toFixed(1)),
@@ -855,7 +853,7 @@ export async function exportExcel(data: AnalyticsData, sections: SectionConfig) 
   ), "Dept Fill Rate");
 
   // 6. Positions
-  XLSX.utils.book_append_sheet(wb, makeSheet(
+  if (sections.positions.enabled) XLSX.utils.book_append_sheet(wb, makeSheet(
     positions.map((p: any) => [
       p.title, p.level ?? "", p.band ?? "",
       departments.find((d: any) => d.id === p.department_id)?.name ?? "",
@@ -865,7 +863,7 @@ export async function exportExcel(data: AnalyticsData, sections: SectionConfig) 
   ), "Positions");
 
   // 7. Leave Summary
-  if (data.leaveSummary?.employees?.length) {
+  if (sections.leave.enabled && data.leaveSummary?.employees?.length) {
     XLSX.utils.book_append_sheet(wb, makeSheet(
       data.leaveSummary.employees.map((e: any) => {
         const g = (a: string) => e.allocations?.find((al: any) => al.leave_type === a);
@@ -879,11 +877,14 @@ export async function exportExcel(data: AnalyticsData, sections: SectionConfig) 
   }
 
   // 8. Position Levels
-  const total = m.levelBar.reduce((s, r) => s + r.count, 0);
-  XLSX.utils.book_append_sheet(wb, makeSheet(
-    m.levelBar.map(r => [r.fullName, r.count, parseFloat(((r.count / Math.max(total, 1)) * 100).toFixed(1))]),
-    ["Level","Count","% of Total"]
-  ), "Position Levels");
+  if (sections.positions.enabled) {
+    const total = m.levelBar.reduce((s, r) => s + r.count, 0);
+    XLSX.utils.book_append_sheet(wb, makeSheet(
+      m.levelBar.map(r => [r.fullName, r.count, parseFloat(((r.count / Math.max(total, 1)) * 100).toFixed(1))]),
+      ["Level","Count","% of Total"]
+    ), "Position Levels");
+  }
 
   XLSX.writeFile(wb, `NCBA_HR_Analytics_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
