@@ -1,13 +1,19 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import {
   Department, Employee, EmployeeCreateInput, EmployeePositionDetail,
   EmployeeStatus, EmployeeUpdateInput, Position,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Calendar, Loader2, Pencil, Plus, Trash2, X, Search, Users, UserCheck, UserX, UserMinus, TrendingUp, Camera, LogOut as ExitIcon } from "lucide-react";
+import {
+  Calendar, Loader2, Pencil, Plus, Trash2, X, Search,
+  Users, UserCheck, UserX, UserMinus, TrendingUp, Camera,
+  LogOut as ExitIcon, ChevronRight, ChevronLeft,
+  CheckCircle2, BookOpen, Briefcase, User, Image as ImageIcon,
+  GraduationCap, Award,
+} from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
 import CareerTimeline from "./CareerTimeline";
@@ -16,14 +22,20 @@ import { ExitFormModal } from "@/components/exits/ExitManagement";
 
 type Stats = { total: number; active: number; inactive: number; suspended: number; terminated: number };
 type FormState = {
+  // Step 1 — Basic info
   full_name: string; email: string; phone: string;
-  date_of_birth: string; national_id: string; status: EmployeeStatus;
+  date_of_birth: string; national_id: string;
+  gender: string; status: EmployeeStatus;
+  // Step 2 — Employment
   employment_type: "permanent" | "temporary";
   contract_end_date: string;
   past_employer: string; past_position: string;
-  gender: string;
+  // Step 3 — Position (assign on create)
+  departmentId: string; positionId: string; startDate: string;
+  // Step 4 — Education (added post-create)
+  edu_institution: string; edu_degree: string; edu_field: string;
+  edu_start: string; edu_end: string; edu_grade: string;
 };
-type PosAssign = { departmentId: string; positionId: string; startDate: string };
 
 const STATUSES: EmployeeStatus[] = ["ACTIVE","INACTIVE","SUSPENDED","TERMINATED"];
 const CORP_TITLES = [
@@ -34,10 +46,22 @@ const CORP_TITLES = [
 ];
 const emptyForm: FormState = {
   full_name: "", email: "", phone: "", date_of_birth: "", national_id: "",
-  status: "ACTIVE", employment_type: "permanent", contract_end_date: "",
-  past_employer: "", past_position: "", gender: "",
+  gender: "", status: "ACTIVE",
+  employment_type: "permanent", contract_end_date: "",
+  past_employer: "", past_position: "",
+  departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10),
+  edu_institution: "", edu_degree: "", edu_field: "",
+  edu_start: "", edu_end: "", edu_grade: "",
 };
-const emptyAssign: PosAssign = { departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10) };
+
+// Wizard steps
+const STEPS = [
+  { id: 1, label: "Basic Info",   icon: User,           desc: "Personal details" },
+  { id: 2, label: "Employment",   icon: Briefcase,      desc: "Contract & history" },
+  { id: 3, label: "Position",     icon: Award,          desc: "Role assignment" },
+  { id: 4, label: "Photo",        icon: ImageIcon,      desc: "Profile picture" },
+  { id: 5, label: "Education",    icon: GraduationCap,  desc: "Academic record" },
+];
 
 const STATUS_COLORS: Record<EmployeeStatus, string> = {
   ACTIVE:     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -134,9 +158,10 @@ export default function EmployeeManagement() {
 
   // Form drawer
   const [form, setForm]             = useState<FormState>(emptyForm);
-  const [posAssign, setPosAssign]   = useState<PosAssign>(emptyAssign);
   const [editingId, setEditingId]   = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [createdEmpId, setCreatedEmpId] = useState<string | null>(null); // emp created at step 1
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
@@ -211,56 +236,123 @@ export default function EmployeeManagement() {
   };
 
   // ── Drawer ────────────────────────────────────────────────────────────────
-  const openNew = () => { setForm(emptyForm); setPosAssign(emptyAssign); setFormPositions([]); setEditingId(null); setDrawerOpen(true); };
+  const openNew = () => {
+    setForm(emptyForm); setEditingId(null);
+    setWizardStep(1); setCreatedEmpId(null);
+    setFormPositions([]); setDrawerOpen(true);
+  };
   const openEdit = (e: Employee) => {
     setForm({
       full_name: e.full_name, email: e.email, phone: e.phone ?? "",
       date_of_birth: e.date_of_birth ?? "", national_id: e.national_id ?? "",
-      status: e.status,
+      gender: (e as any).gender ?? "", status: e.status,
       employment_type: e.employment_type ?? "permanent",
       contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
       past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
-      gender: (e as any).gender ?? "",
+      departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10),
+      edu_institution: "", edu_degree: "", edu_field: "",
+      edu_start: "", edu_end: "", edu_grade: "",
     });
     setAvatarEmployee(e);
-    setEditingId(e.id); setDrawerOpen(true);
+    setEditingId(e.id); setWizardStep(1); setCreatedEmpId(e.id);
+    setDrawerOpen(true);
   };
-  const closeDrawer = () => { setDrawerOpen(false); setEditingId(null); setForm(emptyForm); setPosAssign(emptyAssign); setAvatarEmployee(null); };
+  const closeDrawer = () => {
+    setDrawerOpen(false); setEditingId(null); setForm(emptyForm);
+    setWizardStep(1); setCreatedEmpId(null); setAvatarEmployee(null);
+    setFormPositions([]);
+  };
 
-  const submit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
+  // ── Step save handlers ──────────────────────────────────────────────────
+  const saveBasicInfo = async () => {
     setSaving(true);
     const payload = {
       full_name: form.full_name.trim(), email: form.email.trim(),
       phone: form.phone.trim() || undefined,
       date_of_birth: form.date_of_birth || undefined,
       national_id: form.national_id.trim() || undefined,
-      status: form.status,
+      status: form.status, gender: form.gender || undefined,
       employment_type: form.employment_type,
-      contract_end_date: form.employment_type === "temporary" && form.contract_end_date
-        ? new Date(form.contract_end_date).toISOString() : undefined,
-      past_employer: form.past_employer.trim() || undefined,
-      past_position: form.past_position.trim() || undefined,
-      gender: form.gender || undefined,
     };
     try {
-      if (editingId) {
-        await apiClient.employee.update(editingId, payload as EmployeeUpdateInput);
-        toast.success("Employee updated", `${form.full_name} updated.`);
+      if (editingId || createdEmpId) {
+        const id = editingId || createdEmpId!;
+        await apiClient.employee.update(id, payload as EmployeeUpdateInput);
+        const updated = await apiClient.employee.getById?.(id).catch(() => null);
+        if (updated) setAvatarEmployee(updated);
+        toast.success("Saved", "Basic info updated.");
       } else {
         const created = await apiClient.employee.create(payload as EmployeeCreateInput);
-        if (posAssign.positionId) {
-          await apiClient.employee.assignPosition(created.id, { employee_id: created.id, position_id: posAssign.positionId, start_date: toISO(posAssign.startDate) });
-        }
-        toast.success("Employee created", `${form.full_name} added.`);
+        setCreatedEmpId(created.id);
+        setAvatarEmployee(created);
+        toast.success("Employee created", `${form.full_name} added — continue filling in details.`);
       }
       await load();
-      closeDrawer();
+      setWizardStep(2);
     } catch (err) {
       toast.error("Save failed", err instanceof Error ? err.message : "Failed");
-    } finally {
-      setSaving(false);
+    } finally { setSaving(false); }
+  };
+
+  const saveEmployment = async () => {
+    const id = editingId || createdEmpId;
+    if (!id) { setWizardStep(3); return; }
+    setSaving(true);
+    try {
+      await apiClient.employee.update(id, {
+        employment_type: form.employment_type,
+        contract_end_date: form.employment_type === "temporary" && form.contract_end_date
+          ? new Date(form.contract_end_date).toISOString() : undefined,
+        past_employer: form.past_employer.trim() || undefined,
+        past_position: form.past_position.trim() || undefined,
+      } as EmployeeUpdateInput);
+      toast.success("Saved", "Employment info updated.");
+      await load();
+      setWizardStep(3);
+    } catch (err) {
+      toast.error("Save failed", err instanceof Error ? err.message : "Failed");
+    } finally { setSaving(false); }
+  };
+
+  const savePosition = async () => {
+    const id = editingId || createdEmpId;
+    if (!id || !form.positionId) { setWizardStep(4); return; }
+    setSaving(true);
+    try {
+      const cur = await apiClient.employee.getCurrentPosition(id).catch(() => null);
+      const payload = { employee_id: id, position_id: form.positionId, start_date: toISO(form.startDate) };
+      if (cur) await apiClient.employee.reassignPosition(id, payload);
+      else     await apiClient.employee.assignPosition(id, payload);
+      toast.success("Position assigned", "Role assignment saved.");
+      await load();
+    } catch (err) {
+      toast.error("Assign failed", err instanceof Error ? err.message : "Failed");
+    } finally { setSaving(false); }
+    setWizardStep(4);
+  };
+
+  const saveEducation = async () => {
+    const id = editingId || createdEmpId;
+    if (!id || !form.edu_institution.trim() || !form.edu_degree.trim()) {
+      // Just close if nothing to save
+      toast.success("Complete", "Employee profile saved.");
+      await load(); closeDrawer(); return;
     }
+    setSaving(true);
+    try {
+      await apiClient.education.create(id, {
+        institution: form.edu_institution.trim(),
+        degree: form.edu_degree.trim(),
+        field_of_study: form.edu_field.trim() || undefined,
+        start_date: form.edu_start || undefined,
+        end_date: form.edu_end || undefined,
+        grade: form.edu_grade.trim() || undefined,
+      });
+      toast.success("Complete", "Employee profile fully saved.");
+      await load(); closeDrawer();
+    } catch (err) {
+      toast.error("Education save failed", err instanceof Error ? err.message : "Failed");
+    } finally { setSaving(false); }
   };
 
   const confirmDelete = async () => {
@@ -482,166 +574,394 @@ export default function EmployeeManagement() {
         )}
       </div>
 
-      {/* Employee form drawer */}
+      {/* ── Multi-step wizard modal ── */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={closeDrawer}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl flex flex-col h-full" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{editingId ? "Edit Employee" : "New Employee"}</h2>
-              <button onClick={closeDrawer} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
-            </div>
-            <form onSubmit={submit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              {/* Avatar upload — only shown when editing an existing employee */}
-              {editingId && avatarEmployee && (
-                <div className="flex flex-col items-center pb-2 border-b border-slate-100 dark:border-slate-800">
-                  <AdminAvatarUpload
-                    employee={avatarEmployee}
-                    token={token}
-                    onUploaded={url => {
-                      // Update local employee list so avatar updates in the table too
-                      setEmployees(prev => prev.map(e =>
-                        e.id === avatarEmployee.id ? { ...e, profile_image_url: url } : e
-                      ));
-                      setAvatarEmployee(prev => prev ? { ...prev, profile_image_url: url } : prev);
-                    }}
-                  />
-                </div>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Full Name <span className="text-red-500">*</span></label>
-                  <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className="field" placeholder="Full name" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email <span className="text-red-500">*</span></label>
-                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="field" placeholder="email@example.com" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Phone</label>
-                  <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="field" placeholder="+250 7xx xxx xxx" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Date of Birth</label>
-                  <input type="date" value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} className="field" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">National ID</label>
-                  <input value={form.national_id} onChange={e => setForm(f => ({ ...f, national_id: e.target.value }))} className="field" placeholder="ID number" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
-                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
-                    {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Gender <span className="text-red-500">*</span></label>
-                  <div className="flex gap-3">
-                    {["male","female"].map(g => (
-                      <label key={g} className={cn(
-                        "flex flex-1 items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all",
-                        form.gender === g
-                          ? g === "male"
-                            ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30"
-                            : "border-pink-400 bg-pink-50 dark:bg-pink-950/30"
-                          : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                      )}>
-                        <input type="radio" name="gender" value={g} checked={form.gender === g}
-                          onChange={() => setForm(f => ({ ...f, gender: g }))} className="sr-only" />
-                        <span className={cn("text-sm font-semibold capitalize",
-                          form.gender === g
-                            ? g === "male" ? "text-blue-700 dark:text-blue-300" : "text-pink-700 dark:text-pink-300"
-                            : "text-slate-700 dark:text-slate-300")}>
-                          {g === "male" ? "♂ Male" : "♀ Female"}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={closeDrawer}>
+          <div className="relative w-full max-w-2xl max-h-[96vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            onClick={e => e.stopPropagation()}>
 
-              {/* Employment Type */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Employment Type <span className="text-red-500">*</span></p>
-                <div className="grid grid-cols-2 gap-3">
-                  {(["permanent", "temporary"] as const).map(t => (
-                    <label key={t} className={`flex items-center gap-2.5 rounded-xl border-2 p-3 cursor-pointer transition-colors ${
-                      form.employment_type === t
-                        ? "border-cyan-400 bg-cyan-50 dark:bg-cyan-950/30"
-                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                    }`}>
-                      <input type="radio" name="employment_type" value={t}
-                        checked={form.employment_type === t}
-                        onChange={() => setForm(f => ({ ...f, employment_type: t }))}
-                        className="text-cyan-600" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 capitalize">{t}</p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {t === "permanent" ? "Probation: 3 months" : "Set contract end date"}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-                {form.employment_type === "temporary" && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contract End Date <span className="text-red-500">*</span></label>
-                    <input type="date" value={form.contract_end_date}
-                      onChange={e => setForm(f => ({ ...f, contract_end_date: e.target.value }))}
-                      className="field" />
-                  </div>
-                )}
+            {/* ─ Header ─ */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  {editingId ? "Edit Employee" : "Add New Employee"}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Step {wizardStep} of {STEPS.length} — {STEPS[wizardStep-1]?.label}
+                </p>
               </div>
-
-              {/* Past Employment */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Previous Employment <span className="text-xs font-normal text-slate-400">(optional)</span></p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Past Employer</label>
-                    <input value={form.past_employer} onChange={e => setForm(f => ({ ...f, past_employer: e.target.value }))} className="field" placeholder="Previous company" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Position Held</label>
-                    <input value={form.past_position} onChange={e => setForm(f => ({ ...f, past_position: e.target.value }))} className="field" placeholder="Previous role/title" />
-                  </div>
-                </div>
-              </div>
-
-              {!editingId && (
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Assign Position (optional)</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Department</label>
-                      <select value={posAssign.departmentId} onChange={e => { setPosAssign(p => ({ ...p, departmentId: e.target.value })); void loadDeptPositions(e.target.value, setFormPositions); }} className="field">
-                        <option value="">Select</option>
-                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Position</label>
-                      <select value={posAssign.positionId} onChange={e => setPosAssign(p => ({ ...p, positionId: e.target.value }))} className="field" disabled={!posAssign.departmentId}>
-                        <option value="">{posAssign.departmentId ? "Select" : "Pick department first"}</option>
-                        {formPositions.map(p => <option key={p.id} value={p.id}>{p.title} {p.is_vacant ? "• Vacant" : "• Occupied"}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Start Date</label>
-                    <input type="date" value={posAssign.startDate} onChange={e => setPosAssign(p => ({ ...p, startDate: e.target.value }))} className="field" />
-                  </div>
-                </div>
-              )}
-            </form>
-            <div className="border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex gap-3">
-              <button onClick={closeDrawer} className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-              <button type="submit" onClick={submit} disabled={saving || !form.full_name.trim() || !form.email.trim()}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
-                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {editingId ? "Update" : "Create"}
+              <button onClick={closeDrawer} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X className="h-5 w-5" />
               </button>
+            </div>
+
+            {/* ─ Step indicator ─ */}
+            <div className="flex items-center gap-0 border-b border-slate-100 dark:border-slate-800 px-6 py-3 shrink-0 bg-slate-50 dark:bg-slate-900/60 overflow-x-auto">
+              {STEPS.map((step, idx) => {
+                const Icon = step.icon;
+                const done = wizardStep > step.id;
+                const active = wizardStep === step.id;
+                return (
+                  <React.Fragment key={step.id}>
+                    <button
+                      onClick={() => {
+                        // Only allow going back or to completed steps
+                        if (step.id < wizardStep || (createdEmpId && step.id <= STEPS.length))
+                          setWizardStep(step.id);
+                      }}
+                      className={cn(
+                        "flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all shrink-0",
+                        active ? "bg-cyan-50 dark:bg-cyan-950/30" : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                        (done || active || createdEmpId) ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                        done ? "bg-emerald-500" : active ? "bg-cyan-500" : "bg-slate-200 dark:bg-slate-700"
+                      )}>
+                        {done
+                          ? <CheckCircle2 className="h-4 w-4 text-white" />
+                          : <Icon className={cn("h-3.5 w-3.5", active ? "text-white" : "text-slate-500 dark:text-slate-400")} />}
+                      </div>
+                      <span className={cn("text-[10px] font-semibold whitespace-nowrap",
+                        active ? "text-cyan-700 dark:text-cyan-300" :
+                        done ? "text-emerald-600 dark:text-emerald-400" :
+                        "text-slate-400")}>{step.label}</span>
+                    </button>
+                    {idx < STEPS.length - 1 && (
+                      <div className={cn("h-px w-6 shrink-0 mx-1", wizardStep > step.id ? "bg-emerald-400" : "bg-slate-200 dark:bg-slate-700")} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            {/* ─ Step content ─ */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+
+              {/* Step 1: Basic Info */}
+              {wizardStep === 1 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="h-4 w-4 text-cyan-500" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Personal Information</p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Full Name <span className="text-red-500">*</span></label>
+                      <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} className="field" placeholder="Full legal name" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email <span className="text-red-500">*</span></label>
+                      <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="field" placeholder="email@ncba.co.rw" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Phone</label>
+                      <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="field" placeholder="+250 7xx xxx xxx" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Date of Birth</label>
+                      <input type="date" value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} className="field" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">National ID</label>
+                      <input value={form.national_id} onChange={e => setForm(f => ({ ...f, national_id: e.target.value }))} className="field" placeholder="ID number" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
+                      <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
+                        {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Gender <span className="text-red-500">*</span></label>
+                      <div className="flex gap-3">
+                        {["male","female"].map(g => (
+                          <label key={g} className={cn(
+                            "flex flex-1 items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all",
+                            form.gender === g
+                              ? g === "male" ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30" : "border-pink-400 bg-pink-50 dark:bg-pink-950/30"
+                              : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                          )}>
+                            <input type="radio" name="gender" value={g} checked={form.gender === g}
+                              onChange={() => setForm(f => ({ ...f, gender: g }))} className="sr-only" />
+                            <span className={cn("text-sm font-semibold capitalize",
+                              form.gender === g
+                                ? g === "male" ? "text-blue-700 dark:text-blue-300" : "text-pink-700 dark:text-pink-300"
+                                : "text-slate-700 dark:text-slate-300")}>
+                              {g === "male" ? "♂ Male" : "♀ Female"}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Employment */}
+              {wizardStep === 2 && (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Briefcase className="h-4 w-4 text-cyan-500" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Employment Details</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Contract Type <span className="text-red-500">*</span></p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(["permanent","temporary"] as const).map(t => (
+                        <label key={t} className={cn(
+                          "flex items-center gap-2.5 rounded-xl border-2 p-3 cursor-pointer transition-colors",
+                          form.employment_type === t
+                            ? "border-cyan-400 bg-cyan-50 dark:bg-cyan-950/30"
+                            : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                        )}>
+                          <input type="radio" name="employment_type" value={t}
+                            checked={form.employment_type === t}
+                            onChange={() => setForm(f => ({ ...f, employment_type: t }))}
+                            className="text-cyan-600" />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 capitalize">{t}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                              {t === "permanent" ? "21 days annual leave · 3 months probation" : "18 days annual leave · set end date"}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    {form.employment_type === "temporary" && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contract End Date <span className="text-red-500">*</span></label>
+                        <input type="date" value={form.contract_end_date}
+                          onChange={e => setForm(f => ({ ...f, contract_end_date: e.target.value }))} className="field" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Previous Employment <span className="text-xs font-normal text-slate-400">(optional)</span></p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Past Employer</label>
+                        <input value={form.past_employer} onChange={e => setForm(f => ({ ...f, past_employer: e.target.value }))} className="field" placeholder="Previous company" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Position Held</label>
+                        <input value={form.past_position} onChange={e => setForm(f => ({ ...f, past_position: e.target.value }))} className="field" placeholder="Previous role/title" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Position */}
+              {wizardStep === 3 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award className="h-4 w-4 text-cyan-500" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Position Assignment</p>
+                    <span className="text-xs text-slate-400">(optional)</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Department</label>
+                        <select value={form.departmentId}
+                          onChange={e => {
+                            setForm(f => ({ ...f, departmentId: e.target.value, positionId: "" }));
+                            void loadDeptPositions(e.target.value, setFormPositions);
+                          }} className="field">
+                          <option value="">Select department</option>
+                          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Position</label>
+                        <select value={form.positionId} onChange={e => setForm(f => ({ ...f, positionId: e.target.value }))} className="field" disabled={!form.departmentId}>
+                          <option value="">{form.departmentId ? "Select position" : "Pick department first"}</option>
+                          {formPositions.map(p => <option key={p.id} value={p.id}>{p.title}{p.is_vacant ? " • Vacant" : " • Occupied"}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start Date</label>
+                        <input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} className="field" />
+                      </div>
+                    </div>
+                    {!form.positionId && (
+                      <p className="text-xs text-slate-400 italic">Skip this step if no position is being assigned yet.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Photo */}
+              {wizardStep === 4 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ImageIcon className="h-4 w-4 text-cyan-500" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Profile Photo</p>
+                  </div>
+                  {avatarEmployee ? (
+                    <div className="flex flex-col items-center gap-6 py-4">
+                      <div className="relative">
+                        <div className="h-32 w-32 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-xl">
+                          {avatarEmployee.profile_image_url ? (
+                            <img src={avatarEmployee.profile_image_url} alt={avatarEmployee.full_name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-500 text-3xl font-bold text-white">
+                              {avatarEmployee.full_name.split(" ").slice(0,2).map(w => w[0]).join("").toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <AdminAvatarUpload
+                        employee={avatarEmployee}
+                        token={token}
+                        onUploaded={url => {
+                          setEmployees(prev => prev.map(e => e.id === avatarEmployee.id ? { ...e, profile_image_url: url } : e));
+                          setAvatarEmployee(prev => prev ? { ...prev, profile_image_url: url } : prev);
+                        }}
+                      />
+                      <p className="text-xs text-slate-400 text-center max-w-xs">Upload a professional photo. Max 5 MB. JPG or PNG recommended.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 py-12 text-center">
+                      <ImageIcon className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600 mb-2" />
+                      <p className="text-sm text-slate-400">Complete step 1 first to enable photo upload.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 5: Education */}
+              {wizardStep === 5 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <GraduationCap className="h-4 w-4 text-cyan-500" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Education &amp; Training</p>
+                    <span className="text-xs text-slate-400">(optional)</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Add one education record. You can add more from the employee&#39;s Career tab later.</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Institution <span className="text-red-400">(required to save)</span></label>
+                        <input value={form.edu_institution} onChange={e => setForm(f => ({ ...f, edu_institution: e.target.value }))} className="field" placeholder="University of Rwanda" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Degree / Qualification</label>
+                        <input value={form.edu_degree} onChange={e => setForm(f => ({ ...f, edu_degree: e.target.value }))} className="field" placeholder="Bachelor of Science" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Field of Study</label>
+                        <input value={form.edu_field} onChange={e => setForm(f => ({ ...f, edu_field: e.target.value }))} className="field" placeholder="Computer Science" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start Date</label>
+                        <input type="date" value={form.edu_start} onChange={e => setForm(f => ({ ...f, edu_start: e.target.value }))} className="field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">End Date / Expected</label>
+                        <input type="date" value={form.edu_end} onChange={e => setForm(f => ({ ...f, edu_end: e.target.value }))} className="field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Grade / GPA</label>
+                        <input value={form.edu_grade} onChange={e => setForm(f => ({ ...f, edu_grade: e.target.value }))} className="field" placeholder="First Class / 3.8" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─ Footer navigation ─ */}
+            <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 px-6 py-4 flex items-center gap-3">
+              {/* Back */}
+              {wizardStep > 1 && (
+                <button onClick={() => setWizardStep(s => s - 1)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <ChevronLeft className="h-4 w-4" /> Back
+                </button>
+              )}
+
+              <div className="flex-1" />
+
+              {/* Step progress dots */}
+              <div className="flex gap-1.5">
+                {STEPS.map(s => (
+                  <div key={s.id} className={cn("h-1.5 rounded-full transition-all",
+                    s.id === wizardStep ? "w-6 bg-cyan-500" :
+                    s.id < wizardStep ? "w-1.5 bg-emerald-400" :
+                    "w-1.5 bg-slate-200 dark:bg-slate-700"
+                  )} />
+                ))}
+              </div>
+
+              <div className="flex-1" />
+
+              {/* Cancel on step 1, Save & Next / Finish on others */}
+              {wizardStep === 1 && (
+                <button onClick={closeDrawer}
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  Cancel
+                </button>
+              )}
+
+              {wizardStep === 1 && (
+                <button onClick={saveBasicInfo} disabled={saving || !form.full_name.trim() || !form.email.trim()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Save &amp; Next <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+
+              {wizardStep === 2 && (
+                <>
+                  <button onClick={() => setWizardStep(3)}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Skip
+                  </button>
+                  <button onClick={saveEmployment} disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Save &amp; Next <ChevronRight className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+
+              {wizardStep === 3 && (
+                <>
+                  <button onClick={() => setWizardStep(4)}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Skip
+                  </button>
+                  <button onClick={savePosition} disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {form.positionId ? <>Save &amp; Next <ChevronRight className="h-4 w-4" /></> : <>Next <ChevronRight className="h-4 w-4" /></>}
+                  </button>
+                </>
+              )}
+
+              {wizardStep === 4 && (
+                <button onClick={() => setWizardStep(5)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 transition-colors">
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+
+              {wizardStep === 5 && (
+                <>
+                  <button onClick={() => { void load(); closeDrawer(); }}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Skip &amp; Finish
+                  </button>
+                  <button onClick={saveEducation} disabled={saving || !form.edu_institution.trim()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
+                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <CheckCircle2 className="h-4 w-4" /> Save &amp; Finish
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

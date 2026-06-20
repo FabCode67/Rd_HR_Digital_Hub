@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useContext, createContext, useCallback } from "react";
 import { PositionTreeNode, Employee, Position } from "@/lib/types";
 import {
   ChevronDown, ChevronRight, AlertCircle,
@@ -10,20 +10,29 @@ import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const CARD_W  = 140; // px — compact card width
-const CARD_GAP = 12; // px — tighter gap between sibling columns
-const STEM_H  = 16;  // px — vertical line from card bottom to h-bar
-const DROP_H  = 16;  // px — vertical line from h-bar to child card top
+export const CARD_W   = 140;  // px — card width
+export const CARD_GAP = 16;   // px — base gap between sibling columns (collapsed)
+export const CARD_GAP_EXPANDED = 48; // px — gap when a sibling is expanded
+export const STEM_H   = 20;   // px — stem below card before h-bar
+export const DROP_H   = 20;   // px — drop from h-bar to child top
 
-// ── Subtree width helper ───────────────────────────────────────────────────────
-// A leaf owns exactly CARD_W.
-// A parent owns max(CARD_W, sum-of-children + gaps).
-// This is called recursively so every node knows exactly how wide its column is.
-function subtreeWidth(node: PositionTreeNode): number {
+// ── Expanded-state context (shared across the whole tree) ─────────────────────
+// Stores the set of node IDs that are currently expanded.
+export const ExpandedCtx = createContext<{
+  expandedIds: Set<string>;
+  toggle: (id: string) => void;
+}>({ expandedIds: new Set(), toggle: () => {} });
+
+// ── Subtree width (dynamic — depends on which nodes are expanded) ─────────────
+// A collapsed node or leaf: CARD_W.
+// An expanded node: max(CARD_W, sum of children widths + gaps).
+export function subtreeWidth(node: PositionTreeNode, expandedIds: Set<string>): number {
   const children = node.children ?? [];
-  if (children.length === 0) return CARD_W;
-  const total = children.reduce((acc, c) => acc + subtreeWidth(c), 0)
-    + CARD_GAP * (children.length - 1);
+  if (children.length === 0 || !expandedIds.has(node.id)) return CARD_W;
+  // Determine gap: if any child is expanded, use wider gap
+  const gap = children.some(c => expandedIds.has(c.id)) ? CARD_GAP_EXPANDED : CARD_GAP;
+  const total = children.reduce((acc, c) => acc + subtreeWidth(c, expandedIds), 0)
+    + gap * (children.length - 1);
   return Math.max(CARD_W, total);
 }
 
@@ -36,7 +45,9 @@ interface Props {
 }
 
 export default function PositionNode({ node, level = 0, onPositionUpdated, departmentMap }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const { expandedIds, toggle } = useContext(ExpandedCtx);
+  const expanded = expandedIds.has(node.id);
+
   const [open, setOpen]         = useState(false);
   const [loading, setLoading]   = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -56,11 +67,11 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
   const employeeName  = node.employee?.full_name ?? null;
   const departmentName = departmentMap?.[node.department_id] ?? null;
 
-  // Total width this node occupies (its whole subtree column)
-  const myWidth = subtreeWidth(node);
+  // Dynamic width — recomputes whenever expandedIds changes
+  const myWidth = subtreeWidth(node, expandedIds);
 
   // ── Data load ─────────────────────────────────────────────────────────────
-  const loadDetails = async (showSpinner = true) => {
+  const loadDetails = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     setError(null);
     try {
@@ -70,7 +81,6 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
       ]);
       setDetails(pos);
       setNewBand(pos.band || "");
-
       const results = await Promise.allSettled(
         allEmps.map(e =>
           apiClient.employee.getPositionHistory(e.id).then(h => ({ e, h }))
@@ -91,7 +101,7 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
       if (showSpinner) setLoading(false);
       preloading.current = false;
     }
-  };
+  }, [node.id]);
 
   const onHover = () => {
     if (preloaded.current || preloading.current) return;
@@ -109,7 +119,7 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
     if (!open) return;
     if (!preloaded.current && !preloading.current) loadDetails(true);
     else if (preloaded.current) setLoading(false);
-  }, [open]);
+  }, [open, loadDetails]);
 
   const addEmployee = async () => {
     if (!selEmp) return;
@@ -149,14 +159,31 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
     finally { setSaving(false); }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  // The outermost div is exactly `myWidth` wide.
-  // The card (CARD_W) is centred inside it.
-  // Children are laid out as columns below, each column = subtreeWidth(child).
-  return (
-    <div style={{ width: myWidth }} className="flex flex-col items-center flex-shrink-0">
+  // ── Compute children layout ───────────────────────────────────────────────
+  // Only needed when this node is expanded
+  const childLayout = expanded && hasChildren ? (() => {
+    const gap = children.some(c => expandedIds.has(c.id)) ? CARD_GAP_EXPANDED : CARD_GAP;
+    const childWidths = children.map(c => subtreeWidth(c, expandedIds));
+    const totalW      = childWidths.reduce((a, b) => a + b, 0) + gap * (children.length - 1);
 
-      {/* ── Card ── */}
+    // Centre of each child column relative to left edge of children row
+    const centres: number[] = [];
+    let cursor = 0;
+    for (let i = 0; i < children.length; i++) {
+      centres.push(cursor + childWidths[i] / 2);
+      cursor += childWidths[i] + gap;
+    }
+
+    return { gap, totalW, centres };
+  })() : null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div
+      style={{ width: myWidth }}
+      className="flex flex-col items-center flex-shrink-0 transition-all duration-300"
+    >
+      {/* Card */}
       <div
         onClick={onCardClick}
         onMouseEnter={onHover}
@@ -177,9 +204,9 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
         )}
         {hasChildren && (
           <button
-            onClick={e => { e.stopPropagation(); setExpanded(s => !s); }}
+            onClick={e => { e.stopPropagation(); toggle(node.id); }}
             className={cn(
-              "absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800",
+              "absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800 transition-colors",
               isVacant ? "border-rose-300 text-rose-500" : "border-sky-400 text-sky-600"
             )}
           >
@@ -215,92 +242,67 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
         </div>
       </div>
 
-      {/* ── Children (only when expanded) ── */}
-      {expanded && hasChildren && (() => {
-        // Pre-compute child column widths for connector geometry
-        const childWidths = children.map(subtreeWidth);
-        const totalChildWidth = childWidths.reduce((a, b) => a + b, 0)
-          + CARD_GAP * (children.length - 1);
+      {/* Children — only when expanded */}
+      {expanded && hasChildren && childLayout && (
+        <div className="flex flex-col items-center w-full">
+          {/* Stem */}
+          <div
+            className="bg-slate-300 dark:bg-slate-600"
+            style={{ width: 2, height: STEM_H }}
+          />
 
-        // x-offset of each child column's centre, relative to the centre of myWidth
-        // childColLeft[i] = left edge of child i's column relative to left edge of children row
-        const childColLeft: number[] = [];
-        let cursor = 0;
-        for (let i = 0; i < children.length; i++) {
-          childColLeft.push(cursor);
-          cursor += childWidths[i] + CARD_GAP;
-        }
-        // Centre of each child's card (relative to left edge of children row)
-        const childCardCentre = childColLeft.map((l, i) => l + childWidths[i] / 2);
+          {/* SVG connectors + children row */}
+          <div style={{ width: childLayout.totalW, position: "relative" }}>
+            <svg
+              width={childLayout.totalW}
+              height={STEM_H + DROP_H}
+              className="absolute top-0 left-0 pointer-events-none overflow-visible"
+              style={{ zIndex: 0 }}
+            >
+              {/* Horizontal bar */}
+              {children.length > 1 && (
+                <line
+                  x1={childLayout.centres[0]}
+                  y1={0}
+                  x2={childLayout.centres[children.length - 1]}
+                  y2={0}
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  className="stroke-slate-300 dark:stroke-slate-600"
+                />
+              )}
+              {/* Drop lines to each child */}
+              {childLayout.centres.map((cx, i) => (
+                <line
+                  key={i}
+                  x1={cx} y1={0}
+                  x2={cx} y2={DROP_H}
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  className="stroke-slate-300 dark:stroke-slate-600"
+                />
+              ))}
+            </svg>
 
-        // Left edge of children row relative to centre of myWidth
-        const rowLeft = (myWidth - totalChildWidth) / 2;
-
-        // Connector SVG: drawn at the top of the children section
-        // H-bar goes from first child card centre to last child card centre
-        const barLeft  = childCardCentre[0];
-        const barRight = childCardCentre[children.length - 1];
-        const svgW     = totalChildWidth;
-        const svgH     = STEM_H + DROP_H;
-
-        return (
-          <div className="flex flex-col items-center w-full">
-            {/* Stem down from card */}
-            <div style={{ width: 2, height: STEM_H, background: "var(--connector)" }} className="connector-line" />
-
-            {/* Connector SVG + children row */}
-            <div style={{ width: totalChildWidth, marginLeft: rowLeft - myWidth / 2 + totalChildWidth / 2 + "px", position: "relative" }}>
-              {/* SVG connectors */}
-              <svg
-                width={svgW}
-                height={svgH}
-                className="absolute top-0 left-0 pointer-events-none overflow-visible"
-                style={{ zIndex: 0 }}
-              >
-                {/* Horizontal bar */}
-                {children.length > 1 && (
-                  <line
-                    x1={barLeft} y1={0}
-                    x2={barRight} y2={0}
-                    strokeWidth={2}
-                    strokeDasharray="5 3"
-                    className="stroke-slate-300 dark:stroke-slate-600"
-                  />
-                )}
-                {/* Vertical drop to each child */}
-                {childCardCentre.map((cx, i) => (
-                  <line
-                    key={i}
-                    x1={cx} y1={0}
-                    x2={cx} y2={DROP_H}
-                    strokeWidth={2}
-                    strokeDasharray="5 3"
-                    className="stroke-slate-300 dark:stroke-slate-600"
-                  />
-                ))}
-              </svg>
-
-              {/* Children row — each child in its own fixed-width column */}
-              <div
-                className="flex flex-row items-start"
-                style={{ gap: CARD_GAP, paddingTop: svgH }}
-              >
-                {children.map((child, i) => (
-                  <PositionNode
-                    key={child.id}
-                    node={child}
-                    level={level + 1}
-                    onPositionUpdated={onPositionUpdated}
-                    departmentMap={departmentMap}
-                  />
-                ))}
-              </div>
+            <div
+              className="flex flex-row items-start"
+              style={{ gap: childLayout.gap, paddingTop: STEM_H + DROP_H }}
+            >
+              {children.map(child => (
+                <PositionNode
+                  key={child.id}
+                  node={child}
+                  level={level + 1}
+                  onPositionUpdated={onPositionUpdated}
+                  departmentMap={departmentMap}
+                />
+              ))}
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* ── Modal ── */}
+      {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setOpen(false)}>
           <div className="w-full max-w-2xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl" onClick={e => e.stopPropagation()}>

@@ -12,7 +12,18 @@
  */
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-export interface DateFilter { from: string; to: string }   // "YYYY-MM-DD"
+export interface DateFilter { from: string; to: string }
+
+export interface SectionConfig {
+  overview:    { enabled: boolean; from: string; to: string };
+  employees:   { enabled: boolean; from: string; to: string };
+  gender:      { enabled: boolean; from: string; to: string };
+  departments: { enabled: boolean; from: string; to: string };
+  positions:   { enabled: boolean; from: string; to: string };
+  leave:       { enabled: boolean; from: string; to: string };
+  performance: { enabled: boolean; from: string; to: string };
+  exits:       { enabled: boolean; from: string; to: string };
+}
 
 export interface AnalyticsData {
   departments:    any[];
@@ -133,7 +144,7 @@ function interpret(key: string, data: any): string {
 }
 
 // ── POWERPOINT EXPORT ──────────────────────────────────────────────────────────
-export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter) {
+export async function exportPowerPoint(data: AnalyticsData, sections: SectionConfig) {
   const pptxgen = (await import("pptxgenjs")).default;
   const pptx = new pptxgen();
   pptx.layout  = "LAYOUT_WIDE";
@@ -145,32 +156,38 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
   const year = now.getFullYear();
   const { metrics: m, departments, positions, employees } = data;
 
-  const dateLabel = filter
-    ? `${filter.from} to ${filter.to}`
-    : `Full Year ${year}`;
+  // Helper: filter by section date range
+  function filterByDate<T extends { created_at?: string }>(arr: T[], key: keyof SectionConfig): T[] {
+    const s = sections[key];
+    if (!s.from || !s.to) return arr;
+    return arr.filter(e => {
+      const d = (e.created_at || "").slice(0, 10);
+      return d >= s.from && d <= s.to;
+    });
+  }
 
+  // Build a readable period label per section
+  function periodLabel(key: keyof SectionConfig) {
+    const s = sections[key];
+    return s.from && s.to ? `${s.from} → ${s.to}` : `Full Year ${year}`;
+  }
+
+  // Overall date label for cover (use overview or first enabled section)
+  const firstEnabled = (Object.keys(sections) as (keyof SectionConfig)[]).find(k => sections[k].enabled);
+  const dateLabel = firstEnabled ? periodLabel(firstEnabled) : `Full Year ${year}`;
   const footerText = `NCBA Rwanda · HR Digital Hub · ${dateLabel}`;
 
-  // ── Derive enriched metrics ──────────────────────────────────────────────
-
-  // Filter employees by date range if provided
-  const filteredEmps = filter
-    ? employees.filter(e => {
-        if (!e.created_at) return false;
-        const d = e.created_at.slice(0, 10);
-        return d >= filter.from && d <= filter.to;
-      })
-    : employees;
-
-  // Gender split
+  // Derived data
+  const filteredEmps = filterByDate(employees, "employees");
   const genderMale   = employees.filter((e: any) => e.gender === "male").length;
   const genderFemale = employees.filter((e: any) => e.gender === "female").length;
   const genderNone   = employees.length - genderMale - genderFemale;
+  const permanent    = employees.filter((e: any) => e.employment_type === "permanent").length;
+  const temporary    = employees.filter((e: any) => e.employment_type === "temporary").length;
 
-  // Staff by department (count employees whose current position is in each dept)
+  // Staff by department
   const deptEmpMap: Record<string, number> = {};
   departments.forEach((d: any) => { deptEmpMap[d.name] = 0; });
-  // Approximate: use position fill
   positions.forEach((p: any) => {
     if (!p.is_vacant) {
       const dept = departments.find((d: any) => d.id === p.department_id)?.name;
@@ -183,24 +200,10 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  // Contract split
-  const permanent = employees.filter((e: any) => e.employment_type === "permanent").length;
-  const temporary = employees.filter((e: any) => e.employment_type === "temporary").length;
-
   // Leave by department
   const leaveByDept: Record<string, number> = {};
   if (data.leaveSummary?.employees) {
-    data.leaveSummary.employees.forEach((e: any) => {
-      const pos = positions.find((p: any) => !p.is_vacant);  // best approx
-      const totalUsed = (e.allocations || []).reduce((s: number, a: any) => s + (a.used_days || 0), 0);
-      // Find department from position (approximate)
-      departments.forEach((d: any) => {
-        if (e.employee_name) {
-          leaveByDept[d.name] = (leaveByDept[d.name] || 0);
-        }
-      });
-    });
-    // Better: aggregate all leave days by employee, tie to dept via filled positions
+    // Aggregate all leave days by employee, tie to dept via filled positions
     data.leaveSummary.employees.forEach((e: any) => {
       const totalUsed = (e.allocations || []).reduce((s: number, a: any) => s + (a.used_days || 0), 0);
       if (totalUsed > 0) {
@@ -248,9 +251,8 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
       perfByDept.push({ dept, avg, count: ratings.length });
     });
   }
-  // Use deptBar to build a richer performance proxy using position data
-  // Provide at least the deptBar data as department names for the chart
-  const deptNames = m.deptBar.map(d => d.name);
+  // Use deptBar department names for chart reference
+  void m.deptBar.map(d => d.name);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -376,40 +378,6 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
     });
   }
 
-  function pie(s: any, slices: { label: string; value: number; color: string }[],
-    cx: number, cy: number, r: number) {
-    const total = slices.reduce((s, d) => s + d.value, 0);
-    if (total === 0) return;
-    let angle = -90;
-    slices.forEach(slice => {
-      const sweep = (slice.value / total) * 360;
-      // pptxgenjs doesn't have native pie — draw using arc approximation
-      // Use rectangle as proxy (simplified pie legend instead)
-      s.addShape(pptx.ShapeType.rect, {
-        x: cx - r - 0.05, y: cy - r / 4 + slices.indexOf(slice) * 0.28,
-        w: 0.18, h: 0.18, fill: { color: slice.color },
-      });
-      const pct = Math.round((slice.value / total) * 100);
-      s.addText(`${slice.label}: ${slice.value} (${pct}%)`, {
-        x: cx - r + 0.18, y: cy - r / 4 + slices.indexOf(slice) * 0.28,
-        w: 3.2, h: 0.2, fontSize: 8.5, color: C.navy, fontFace: "Arial",
-      });
-      angle += sweep;
-    });
-    // Draw large donut visual as stacked proportional rects
-    const totalH = r * 2;
-    let yOff = 0;
-    slices.forEach(slice => {
-      const sh = (slice.value / total) * totalH;
-      if (sh < 0.01) return;
-      s.addShape(pptx.ShapeType.rect, {
-        x: cx - 0.5, y: cy - r + yOff, w: 1.0, h: sh,
-        fill: { color: slice.color },
-      });
-      yOff += sh;
-    });
-  }
-
   function addTable(s: any, x: number, y: number, w: number,
     headers: string[], rows: (string|number)[][], maxRows = 15) {
     const hRow = headers.map(h => ({
@@ -437,7 +405,7 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
       fontSize: 40, bold: true, color: C.white, fontFace: "Arial" });
     s.addText(dateLabel, { x: 0.75, y: 3.25, w: 8.5, h: 0.4,
       fontSize: 14, color: C.mid, fontFace: "Arial" });
-    s.addText(`Generated: ${now.toLocaleDateString("en-GB", { day:"numeric",month:"long",year:"numeric" })}`,
+    s.addText(`Generated: ${now.toLocaleDateString("en-GB", { day:"numeric",month:"long",year:"numeric" })} · ${filteredEmps.length} employees in period`,
       { x: 0.75, y: 6.85, w: 8, h: 0.28, fontSize: 9, color: C.dark, fontFace: "Arial" });
 
     // Right stat panel
@@ -456,8 +424,8 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
   }
 
   // ── SLIDE 2: Executive Summary ─────────────────────────────────────────────
-  {
-    const s = addSlide("Executive Summary", `Key workforce indicators · ${dateLabel}`);
+  if (sections.overview.enabled) {
+    const s = addSlide("Executive Summary", `Key workforce indicators · ${periodLabel("overview")}`);
     const boxes = [
       { label: "Total Employees",  value: String(employees.length),       accent: C.sky,    sub: `${permanent} permanent · ${temporary} temporary` },
       { label: "Active Staff",     value: String(m.active),               accent: C.green,  sub: `${Math.round((m.active/Math.max(employees.length,1))*100)}% activity rate` },
@@ -474,8 +442,8 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
     interpretation(s, `${employees.length} employees across ${departments.length} departments. Active workforce rate is ${active_rate}%. ${m.vacant} open positions represent ${Math.round((m.vacant/Math.max(positions.length,1))*100)}% of the total position pool — ${m.vacant > 10 ? "recruitment should be prioritised" : "recruitment pipeline is manageable"}.`);
   }
 
-  // ── SLIDE 3: Gender Analysis ───────────────────────────────────────────────
-  {
+  // ── SLIDE 3: Gender (part of employees section) ─────────────────────────────
+  if (sections.gender.enabled) {
     const s = addSlide("Gender Distribution", "Workforce composition by gender");
     const total = genderMale + genderFemale + genderNone;
 
@@ -768,14 +736,12 @@ export async function exportPowerPoint(data: AnalyticsData, filter?: DateFilter)
   }
 
   // ── Write ──────────────────────────────────────────────────────────────────
-  const from = filter?.from ?? `${year}-01-01`;
-  const to   = filter?.to   ?? `${year}-12-31`;
-  await pptx.writeFile({ fileName: `NCBA_HR_Analytics_${from}_${to}.pptx` });
+  await pptx.writeFile({ fileName: `NCBA_HR_Analytics_${new Date().toISOString().slice(0, 10)}.pptx` });
 }
 
 
 // ── EXCEL EXPORT (unchanged, keep working) ────────────────────────────────────
-export async function exportExcel(data: AnalyticsData, filter?: DateFilter) {
+export async function exportExcel(data: AnalyticsData, sections: SectionConfig) {
   const XLSX = await import("xlsx");
   const wb   = XLSX.utils.book_new();
   const year = new Date().getFullYear();
@@ -788,10 +754,20 @@ export async function exportExcel(data: AnalyticsData, filter?: DateFilter) {
 
   const { metrics: m, departments, positions, employees } = data;
 
-  // Filter employees if date range provided
-  const filteredEmps = filter
-    ? employees.filter((e: any) => { const d = (e.created_at || "").slice(0,10); return d >= filter.from && d <= filter.to; })
+  // Filter employees by the employees section date range
+  const empSection = sections.employees;
+  const filteredEmps = empSection?.enabled && empSection.from
+    ? employees.filter((e: any) => {
+        const d = (e.created_at || "").slice(0, 10);
+        return d >= empSection.from && d <= empSection.to;
+      })
     : employees;
+
+  // Build period label for summary
+  const enabledSections = (Object.keys(sections) as (keyof SectionConfig)[])
+    .filter(k => sections[k].enabled)
+    .map(k => `${k}: ${sections[k].from} → ${sections[k].to}`)
+    .join("; ");
 
   const permanent = employees.filter((e:any) => e.employment_type === "permanent").length;
   const temporary = employees.filter((e:any) => e.employment_type === "temporary").length;
@@ -801,7 +777,7 @@ export async function exportExcel(data: AnalyticsData, filter?: DateFilter) {
   // 1. Summary
   const wsSummary = XLSX.utils.aoa_to_sheet([
     ["Metric", "Value"],
-    ["Report Period", filter ? `${filter.from} to ${filter.to}` : `Full Year ${year}`],
+    ["Report Period", enabledSections || `Full Year ${year}`],
     ["Generated At", new Date().toLocaleString()],
     ["", ""],
     ["Total Departments",   departments.length],
@@ -827,24 +803,35 @@ export async function exportExcel(data: AnalyticsData, filter?: DateFilter) {
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
   // 2. Employees
-  XLSX.utils.book_append_sheet(wb, makeSheet(
-    filteredEmps.map((e: any) => [
-      e.full_name, e.email, e.phone ?? "", e.gender ?? "",
-      e.status, e.employment_type ?? "",
-      e.date_of_birth ? new Date(e.date_of_birth).toLocaleDateString() : "",
-      e.national_id ?? "", e.past_employer ?? "", e.past_position ?? "",
-      e.created_at ? new Date(e.created_at).toLocaleDateString() : "",
-    ]),
-    ["Full Name","Email","Phone","Gender","Status","Contract","Date of Birth","National ID","Past Employer","Past Position","Joined"]
-  ), "Employees");
+  if (sections.employees.enabled) {
+    XLSX.utils.book_append_sheet(wb, makeSheet(
+      filteredEmps.map((e: any) => [
+        e.full_name, e.email, e.phone ?? "", e.gender ?? "",
+        e.status, e.employment_type ?? "",
+        e.date_of_birth ? new Date(e.date_of_birth).toLocaleDateString() : "",
+        e.national_id ?? "", e.past_employer ?? "", e.past_position ?? "",
+        e.created_at ? new Date(e.created_at).toLocaleDateString() : "",
+      ]),
+      ["Full Name","Email","Phone","Gender","Status","Contract","Date of Birth","National ID","Past Employer","Past Position","Joined"]
+    ), "Employees");
+  }
 
   // 3. Gender breakdown
-  XLSX.utils.book_append_sheet(wb, makeSheet(
-    [["Male", genderMale, `${employees.length > 0 ? Math.round(genderMale/employees.length*100) : 0}%`],
-     ["Female", genderFemale, `${employees.length > 0 ? Math.round(genderFemale/employees.length*100) : 0}%`],
-     ["Not Specified", employees.length - genderMale - genderFemale, ""]],
-    ["Gender","Count","% of Total"]
-  ), "Gender Analysis");
+  if (sections.gender.enabled) {
+    XLSX.utils.book_append_sheet(wb, makeSheet(
+      [
+        ["Male",          genderMale,   `${employees.length > 0 ? Math.round(genderMale/employees.length*100)   : 0}%`],
+        ["Female",        genderFemale, `${employees.length > 0 ? Math.round(genderFemale/employees.length*100) : 0}%`],
+        ["Not Specified", employees.length - genderMale - genderFemale, ""],
+        ["", "", ""],
+        ["Permanent Male",   employees.filter((e:any) => e.employment_type==="permanent" && e.gender==="male").length,   ""],
+        ["Permanent Female", employees.filter((e:any) => e.employment_type==="permanent" && e.gender==="female").length, ""],
+        ["Temporary Male",   employees.filter((e:any) => e.employment_type==="temporary"  && e.gender==="male").length,   ""],
+        ["Temporary Female", employees.filter((e:any) => e.employment_type==="temporary"  && e.gender==="female").length, ""],
+      ],
+      ["Category", "Count", "% of Total"]
+    ), "Gender Analysis");
+  }
 
   // 4. Departments
   XLSX.utils.book_append_sheet(wb, makeSheet(
@@ -898,7 +885,5 @@ export async function exportExcel(data: AnalyticsData, filter?: DateFilter) {
     ["Level","Count","% of Total"]
   ), "Position Levels");
 
-  const from = filter?.from ?? `${year}-01-01`;
-  const to   = filter?.to   ?? `${year}-12-31`;
-  XLSX.writeFile(wb, `NCBA_HR_Analytics_${from}_${to}.xlsx`);
+  XLSX.writeFile(wb, `NCBA_HR_Analytics_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

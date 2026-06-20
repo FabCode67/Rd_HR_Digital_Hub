@@ -15,6 +15,10 @@ import {
   BarChart3,
   LogOut,
   ChevronDown,
+  Phone,
+  Mail,
+  MapPin,
+  Clock,
 } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 
@@ -144,7 +148,7 @@ export default function Page() {
 
           {/* Nav links */}
           <div className="hidden items-center gap-8 text-[13px] tracking-wide text-slate-400 md:flex">
-            {["Features", "Analytics", "Security"].map((l) => (
+            {["Features", "Analytics", "Security", "Contact"].map((l) => (
               <a
                 key={l}
                 href={`#${l.toLowerCase()}`}
@@ -557,6 +561,137 @@ export default function Page() {
         </div>
       </section>
 
+      {/* ── Contact ── */}
+      <section id="contact" className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
+        <div className="mb-12 text-center">
+          <p className="mb-3 text-[11px] font-semibold tracking-[0.22em] text-cyan-400 uppercase">
+            Get In Touch
+          </p>
+          <h2 className="text-4xl font-bold text-white lg:text-5xl">
+            Contact & Support
+          </h2>
+          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-slate-400">
+            Reach the NCBA Rwanda HR Digital Hub team for access requests,
+            technical support, or platform enquiries.
+          </p>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Contact info card */}
+          <div className="rounded-2xl border border-white/8 bg-white/3 p-8 space-y-6">
+            <h3 className="text-lg font-bold text-white">Contact Information</h3>
+
+            {/* Phone */}
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-400/10">
+                <Phone className="h-5 w-5 text-cyan-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-1">Phone</p>
+                <a
+                  href="tel:+250780503242"
+                  className="text-lg font-bold text-white hover:text-cyan-300 transition-colors"
+                >
+                  +250 780 503 242
+                </a>
+                <p className="text-xs text-slate-500 mt-0.5">HR Digital Hub Support Line</p>
+              </div>
+            </div>
+
+            {/* Email */}
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-400/25 bg-violet-400/10">
+                <Mail className="h-5 w-5 text-violet-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-1">Email</p>
+                <a
+                  href="mailto:hr.hub@ncba.rw"
+                  className="text-base font-semibold text-white hover:text-violet-300 transition-colors"
+                >
+                  hr.hub@ncba.rw
+                </a>
+                <p className="text-xs text-slate-500 mt-0.5">Platform enquiries &amp; access requests</p>
+              </div>
+            </div>
+
+            {/* Location */}
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-400/10">
+                <MapPin className="h-5 w-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-1">Location</p>
+                <p className="text-base font-semibold text-white">Kigali, Rwanda</p>
+                <p className="text-xs text-slate-500 mt-0.5">NCBA Rwanda Headquarters</p>
+              </div>
+            </div>
+
+            {/* Hours */}
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-400/25 bg-amber-400/10">
+                <Clock className="h-5 w-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-1">Support Hours</p>
+                <p className="text-base font-semibold text-white">Mon – Fri, 8:00 AM – 5:00 PM</p>
+                <p className="text-xs text-slate-500 mt-0.5">East Africa Time (EAT)</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick actions card */}
+          <div className="flex flex-col gap-4">
+            {/* Call to action — call */}
+            <a
+              href="tel:+250780503242"
+              className="group relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-950/50 to-slate-900 p-7 flex items-center gap-5 transition-all hover:border-cyan-400/40 hover:from-cyan-950/70"
+            >
+              <div className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-cyan-400/8 blur-2xl transition-opacity group-hover:opacity-150" />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/30 bg-cyan-400/15">
+                <Phone className="h-6 w-6 text-cyan-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
+                  Call Support
+                </p>
+                <p className="text-xl font-bold text-cyan-400 mt-0.5">+250 780 503 242</p>
+                <p className="text-xs text-slate-500 mt-1">Tap to call directly from your device</p>
+              </div>
+              <ArrowRight className="ml-auto h-5 w-5 text-slate-600 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+            </a>
+
+            {/* Email */}
+            <a
+              href="mailto:hr.hub@ncba.rw"
+              className="group relative overflow-hidden rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-950/50 to-slate-900 p-7 flex items-center gap-5 transition-all hover:border-violet-400/40 hover:from-violet-950/70"
+            >
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-400/15">
+                <Mail className="h-6 w-6 text-violet-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-bold text-white group-hover:text-violet-300 transition-colors">
+                  Email the Team
+                </p>
+                <p className="text-sm font-semibold text-violet-400 mt-0.5">hr.hub@ncba.rw</p>
+                <p className="text-xs text-slate-500 mt-1">We respond within 1 business day</p>
+              </div>
+              <ArrowRight className="ml-auto h-5 w-5 text-slate-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+            </a>
+
+            {/* Internal note */}
+            <div className="rounded-2xl border border-white/6 bg-white/2 p-5">
+              <p className="text-xs font-semibold text-slate-400 mb-2">Internal Platform</p>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                This platform is exclusively for NCBA Rwanda staff. Access is
+                granted by the HR team. Contact support if you have not yet
+                received your login credentials.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA ── */}
       <section className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
         <div className="relative overflow-hidden rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-950/40 via-slate-900 to-blue-950/40 p-12 text-center lg:p-20">
@@ -609,6 +744,10 @@ export default function Page() {
             confidential.
           </p>
           <div className="flex items-center gap-5 text-xs text-slate-500">
+            <a href="tel:+250780503242" className="flex items-center gap-1.5 transition hover:text-slate-300">
+              <Phone className="h-3 w-3" /> +250 780 503 242
+            </a>
+            <span className="text-slate-700">·</span>
             <Link href="/login" className="transition hover:text-slate-300">
               Sign In
             </Link>

@@ -358,7 +358,7 @@ export default function ExitManagement() {
             <table className="w-full divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-950/40">
                 <tr>
-                  {["Employee","Exit Date","Position Held","Reason","Type","Next Move","Actions"].map(h => (
+                  {["Employee","Exit Date","Department","Position Held","Reason","Type","Next Move","Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -382,6 +382,9 @@ export default function ExitManagement() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
                         {fmtDate(ex.exit_date)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 max-w-[140px]">
+                        <span className="truncate block">{ex.department_name ?? "—"}</span>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 max-w-[160px]">
                         <span className="truncate block">{ex.position_title ?? "—"}</span>

@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
-import PositionNode from "./PositionNode";
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import PositionNode, {
+  ExpandedCtx, subtreeWidth,
+  CARD_GAP, CARD_GAP_EXPANDED, DROP_H,
+} from "./PositionNode";
 import { PositionTreeNode } from "@/lib/types";
 
 interface PositionTreeProps {
@@ -11,49 +14,61 @@ interface PositionTreeProps {
   departmentMap: Record<string, string>;
 }
 
-// Must match PositionNode constants exactly
-const CARD_W   = 140;
-const CARD_GAP = 12;
-const DROP_H   = 16;
-
-function subtreeWidth(node: PositionTreeNode): number {
-  const children = node.children ?? [];
-  if (children.length === 0) return CARD_W;
-  const total = children.reduce((acc, c) => acc + subtreeWidth(c), 0)
-    + CARD_GAP * (children.length - 1);
-  return Math.max(CARD_W, total);
-}
-
 export default function PositionTree({
   positions, level = 0, onPositionUpdated, departmentMap,
 }: PositionTreeProps) {
+  // ── Shared expanded state ──────────────────────────────────────────────────
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggle = useCallback((id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  // ── Auto-center scroll on mount ───────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-center the scroll position when the tree first renders
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Small delay lets the browser finish layout before we measure
     const timer = setTimeout(() => {
-      const scrollWidth  = el.scrollWidth;
-      const clientWidth  = el.clientWidth;
-      if (scrollWidth > clientWidth) {
-        el.scrollLeft = (scrollWidth - clientWidth) / 2;
+      if (el.scrollWidth > el.clientWidth) {
+        el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
       }
     }, 50);
     return () => clearTimeout(timer);
   }, [positions]);
 
+  // Re-center when expanded state changes (tree grows/shrinks)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const timer = setTimeout(() => {
+      if (el.scrollWidth > el.clientWidth) {
+        // Only nudge toward center; don't jump aggressively
+        const target = (el.scrollWidth - el.clientWidth) / 2;
+        el.scrollLeft = el.scrollLeft * 0.4 + target * 0.6;
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [expandedIds]);
+
   if (!positions.length) return null;
 
-  const childWidths = positions.map(subtreeWidth);
+  // ── Compute top-level layout (dynamic — depends on expandedIds) ───────────
+  const childWidths = positions.map(p => subtreeWidth(p, expandedIds));
+  const anyExpanded = positions.some(p => expandedIds.has(p.id));
+  const gap         = anyExpanded ? CARD_GAP_EXPANDED : CARD_GAP;
   const totalWidth  = childWidths.reduce((a, b) => a + b, 0)
-    + CARD_GAP * (positions.length - 1);
+    + gap * (positions.length - 1);
 
   let cursor = 0;
   const cardCentres = childWidths.map(w => {
     const centre = cursor + w / 2;
-    cursor += w + CARD_GAP;
+    cursor += w + gap;
     return centre;
   });
 
@@ -61,10 +76,13 @@ export default function PositionTree({
   const barRight = cardCentres[cardCentres.length - 1];
 
   return (
-    <div ref={scrollRef} className="overflow-x-auto pb-4">
-      <div style={{ width: totalWidth, minWidth: totalWidth }} className="relative">
-        {/* SVG connector lines at the top of this level */}
-        {positions.length > 0 && (
+    <ExpandedCtx.Provider value={{ expandedIds, toggle }}>
+      <div ref={scrollRef} className="overflow-x-auto pb-4">
+        <div
+          style={{ width: totalWidth, minWidth: totalWidth }}
+          className="relative transition-all duration-300"
+        >
+          {/* Top-level connector SVG */}
           <svg
             width={totalWidth}
             height={DROP_H}
@@ -91,24 +109,24 @@ export default function PositionTree({
               />
             ))}
           </svg>
-        )}
 
-        {/* Node row */}
-        <div
-          className="flex flex-row items-start flex-nowrap"
-          style={{ gap: CARD_GAP, paddingTop: DROP_H }}
-        >
-          {positions.map((p) => (
-            <PositionNode
-              key={p.id}
-              node={p}
-              level={level}
-              onPositionUpdated={onPositionUpdated}
-              departmentMap={departmentMap}
-            />
-          ))}
+          {/* Top-level node row */}
+          <div
+            className="flex flex-row items-start flex-nowrap transition-all duration-300"
+            style={{ gap, paddingTop: DROP_H }}
+          >
+            {positions.map(p => (
+              <PositionNode
+                key={p.id}
+                node={p}
+                level={level}
+                onPositionUpdated={onPositionUpdated}
+                departmentMap={departmentMap}
+              />
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </ExpandedCtx.Provider>
   );
 }

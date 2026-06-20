@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { Department, Employee, Position, PositionLevel } from "@/lib/types";
 import {
-  Loader2, Building2, BriefcaseBusiness, Users,
+  Loader2, Building2, Briefcase, Users,
   BadgeCheck, TrendingUp, AlertCircle,
   FileSpreadsheet, Presentation, Download,
+  Settings2, X, CheckSquare, Square, ChevronDown, ChevronUp,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -17,17 +18,20 @@ import {
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 100;
+const MAX_PAGES = 20; // safety limit — prevents infinite loop if API always returns full pages
 
 async function fetchAllPages<T>(
   loader: (skip: number, limit: number) => Promise<T[]>
 ): Promise<T[]> {
   let skip = 0;
+  let page = 0;
   const items: T[] = [];
-  while (true) {
+  while (page < MAX_PAGES) {
     const batch = await loader(skip, PAGE_SIZE);
     items.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
+    if (batch.length < PAGE_SIZE) break;  // last page
     skip += PAGE_SIZE;
+    page++;
   }
   return items;
 }
@@ -159,13 +163,46 @@ export default function AnalyticsDashboard() {
   const [employees,   setEmployees]   = useState<Employee[]>([]);
   const [leaveSummary, setLeaveSummary]           = useState<any>(null);
   const [performanceSummary, setPerformanceSummary] = useState<any>(null);
+  const [exitSummary, setExitSummary]               = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
   const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
+  const [showExportBuilder, setShowExportBuilder] = useState(false);
 
-  // Date filter for exports
-  const [exportFrom, setExportFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
-  const [exportTo,   setExportTo]   = useState(() => new Date().toISOString().slice(0,10));
+  // ── Export section config ──────────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0,10);
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+
+  type SectionKey = "overview"|"employees"|"gender"|"departments"|"positions"|"leave"|"performance"|"exits";
+  type SectionCfg = { enabled: boolean; from: string; to: string };
+
+  const [sections, setSections] = useState<Record<SectionKey, SectionCfg>>({
+    overview:    { enabled: true,  from: yearStart, to: today },
+    employees:   { enabled: true,  from: yearStart, to: today },
+    gender:      { enabled: true,  from: yearStart, to: today },
+    departments: { enabled: true,  from: yearStart, to: today },
+    positions:   { enabled: true,  from: yearStart, to: today },
+    leave:       { enabled: !!leaveSummary,        from: yearStart, to: today },
+    performance: { enabled: !!performanceSummary,  from: yearStart, to: today },
+    exits:       { enabled: !!exitSummary,         from: yearStart, to: today },
+  });
+
+  const SECTION_META: Record<SectionKey, { label: string; desc: string; icon: string; color: string }> = {
+    overview:    { label: "Executive Summary",   desc: "KPIs, headcount, fill rate, vacancies",           icon: "📊", color: "text-sky-600"     },
+    employees:   { label: "Employee Report",     desc: "Full staff directory with status & contracts",    icon: "👥", color: "text-emerald-600" },
+    gender:      { label: "Gender Report",       desc: "Male/female split, contract type by gender",      icon: "⚧️", color: "text-pink-600"    },
+    departments: { label: "Departments",         desc: "Org structure and department hierarchy",          icon: "🏢", color: "text-indigo-600"  },
+    positions:   { label: "Positions",           desc: "All positions with fill rates by department",     icon: "💼", color: "text-violet-600"  },
+    leave:       { label: "Leave Report",        desc: "Annual leave, sick, maternity — by employee",    icon: "🏖️", color: "text-cyan-600"    },
+    performance: { label: "Performance Report",  desc: "Mid-year & end-year ratings, KPI goals",         icon: "⭐", color: "text-amber-600"   },
+    exits:       { label: "Exit Report",         desc: "Departures by reason, type and department",      icon: "🚪", color: "text-rose-600"    },
+  };
+
+  const toggleSection = (key: SectionKey) =>
+    setSections(s => ({ ...s, [key]: { ...s[key], enabled: !s[key].enabled } }));
+  const updateSection = (key: SectionKey, field: "from"|"to", val: string) =>
+    setSections(s => ({ ...s, [key]: { ...s[key], [field]: val } }));
+  const enabledCount = Object.values(sections).filter(s => s.enabled).length;
 
   // Pie active slice state
   const [vacancyActive,   setVacancyActive]   = useState(0);
@@ -184,15 +221,19 @@ export default function AnalyticsDashboard() {
         ]);
         if (!mounted) return;
         setDepartments(depts); setPositions(pos); setEmployees(emps);
-        // Load leave + performance summaries (non-critical)
-        try {
-          const ls = await apiClient.leave.getSummary(new Date().getFullYear());
-          if (mounted) setLeaveSummary(ls);
-        } catch { /* non-critical */ }
-        try {
-          const ps = await apiClient.performance.getSummary(new Date().getFullYear());
-          if (mounted) setPerformanceSummary(ps);
-        } catch { /* non-critical */ }
+        // Set loading false immediately after core data — secondary data loads in background
+        if (mounted) setLoading(false);
+        // Load leave + performance summaries in parallel (non-critical, background)
+        Promise.allSettled([
+          apiClient.leave.getSummary(new Date().getFullYear()),
+          apiClient.performance.getSummary(new Date().getFullYear()),
+          apiClient.exits.list(),
+        ]).then(([leaveResult, perfResult, exitResult]) => {
+          if (!mounted) return;
+          if (leaveResult.status === "fulfilled") setLeaveSummary(leaveResult.value);
+          if (perfResult.status  === "fulfilled") setPerformanceSummary(perfResult.value);
+          if (exitResult.status  === "fulfilled") setExitSummary(exitResult.value);
+        });
       } catch (err) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : "Failed to load analytics");
@@ -295,30 +336,180 @@ export default function AnalyticsDashboard() {
     };
   }, [departments, positions, employees]);
 
+  const performanceMetrics = useMemo(() => {
+    if (!performanceSummary) return null;
+    const byDept: any[] = performanceSummary.by_department ?? [];
+    const dist: Record<number,number> = performanceSummary.rating_distribution ?? {};
+    const allRatings = Object.entries(dist).flatMap(([r, c]) => Array(c).fill(Number(r)));
+    const totalReviewed = allRatings.length;
+
+    const RATING_META: Record<number,{label:string;color:string;bg:string}> = {
+      5: { label: "Outstanding",           color: COLORS.emerald, bg: "bg-emerald-500" },
+      4: { label: "Exceeded Expectations", color: COLORS.cyan,    bg: "bg-cyan-500"    },
+      3: { label: "Succeeded",             color: COLORS.sky,     bg: "bg-sky-500"     },
+      2: { label: "Meets Some",            color: COLORS.amber,   bg: "bg-amber-500"   },
+      1: { label: "Unsatisfactory",        color: COLORS.rose,    bg: "bg-rose-500"    },
+    };
+
+    // Rating distribution for bar chart
+    const ratingDist = [5,4,3,2,1].map(r => ({
+      rating: r,
+      label:  RATING_META[r].label,
+      count:  dist[r] ?? 0,
+      color:  RATING_META[r].color,
+      bg:     RATING_META[r].bg,
+    }));
+
+    // Dept avg rating chart data
+    const deptAvgBar = byDept.map((d: any, i: number) => ({
+      name:       d.department.length > 20 ? d.department.slice(0,19)+"…" : d.department,
+      fullName:   d.department,
+      avg:        d.avg_rating,
+      count:      d.count,
+      min:        d.min_rating,
+      max:        d.max_rating,
+      spread:     d.spread,
+      std_dev:    d.std_dev,
+      fill:       PIE_PALETTE[i % PIE_PALETTE.length],
+    }));
+
+    // Variance bar chart — higher std_dev = more variance
+    const varianceBar = [...deptAvgBar]
+      .sort((a, b) => b.std_dev - a.std_dev);
+
+    // Best and worst dept
+    const best  = byDept[0];
+    const worst = byDept[byDept.length - 1];
+    const gap   = byDept.length > 1 ? (best?.avg_rating - worst?.avg_rating).toFixed(2) : null;
+
+    // Cycle split (mid_year vs end_year)
+    const midYearRatings: number[] = [];
+    const endYearRatings: number[] = [];
+    (performanceSummary.employees ?? []).forEach((e: any) => {
+      (e.reviews ?? []).filter((r: any) => !r.is_draft).forEach((r: any) => {
+        if (r.cycle === "mid_year") midYearRatings.push(r.rating);
+        else endYearRatings.push(r.rating);
+      });
+    });
+    const midAvg = midYearRatings.length ? (midYearRatings.reduce((a,b)=>a+b,0)/midYearRatings.length).toFixed(2) : null;
+    const endAvg = endYearRatings.length ? (endYearRatings.reduce((a,b)=>a+b,0)/endYearRatings.length).toFixed(2) : null;
+
+    return {
+      totalReviewed, byDept, deptAvgBar, varianceBar, ratingDist,
+      RATING_META, best, worst, gap, midAvg, endAvg,
+      midYearCount: midYearRatings.length, endYearCount: endYearRatings.length,
+      avgRating: performanceSummary.average_rating,
+      reviewed:  performanceSummary.reviewed,
+      pending:   performanceSummary.pending,
+    };
+  }, [performanceSummary]);
+
+  const leaveMetrics = useMemo(() => {
+    if (!leaveSummary?.employees?.length) return null;
+    const emps: any[] = leaveSummary.employees;
+
+    // Totals per leave type
+    const totals = { annual: 0, sick: 0, maternity: 0, paternity: 0, compassionate: 0 };
+    let totalDays = 0;
+    let totalEntitlement = 0;
+    let fullyUsed = 0;
+    let notUsed = 0;
+
+    emps.forEach((e: any) => {
+      totalEntitlement += e.annual_entitlement ?? 0;
+      (e.allocations ?? []).forEach((a: any) => {
+        const used = a.used_days ?? 0;
+        totalDays += used;
+        const lt = a.leave_type as keyof typeof totals;
+        if (lt in totals) totals[lt] += used;
+      });
+      const annualAlloc = e.allocations?.find((a: any) => a.leave_type === "annual");
+      const used = annualAlloc?.used_days ?? 0;
+      if (used >= (e.annual_entitlement ?? 21)) fullyUsed++;
+      if (used === 0) notUsed++;
+    });
+
+    // Utilisation rate (annual leave used vs entitled)
+    const utilisationRate = totalEntitlement > 0
+      ? Math.round((totals.annual / totalEntitlement) * 100) : 0;
+
+    // Leave type breakdown for pie/bar
+    const byType = [
+      { name: "Annual",        days: totals.annual,        fill: COLORS.cyan,    short: "AN" },
+      { name: "Sick",          days: totals.sick,          fill: COLORS.amber,   short: "SK" },
+      { name: "Maternity",     days: totals.maternity,     fill: COLORS.violet,  short: "MT" },
+      { name: "Paternity",     days: totals.paternity,     fill: COLORS.sky,     short: "PT" },
+      { name: "Compassionate", days: totals.compassionate, fill: COLORS.teal,    short: "CM" },
+    ].filter(d => d.days > 0);
+
+    // Per-employee utilisation (annual leave only, top 10 by used days)
+    const perEmployee = emps
+      .map((e: any) => {
+        const alloc = e.allocations?.find((a: any) => a.leave_type === "annual");
+        return {
+          name:        e.employee_name?.split(" ")[0] ?? "?",
+          fullName:    e.employee_name ?? "",
+          used:        alloc?.used_days ?? 0,
+          entitlement: e.annual_entitlement ?? 21,
+          remaining:   alloc?.remaining ?? e.annual_entitlement ?? 21,
+          contract:    e.employment_type ?? "",
+        };
+      })
+      .sort((a, b) => b.used - a.used)
+      .slice(0, 10);
+
+    // Avg days used per employee
+    const avgUsed = emps.length > 0 ? Math.round(totals.annual / emps.length) : 0;
+
+    return {
+      totalDays, totals, utilisationRate, byType,
+      perEmployee, avgUsed, fullyUsed, notUsed,
+      totalEmployees: emps.length, totalEntitlement,
+    };
+  }, [leaveSummary]);
+
+  const exitMetrics = useMemo(() => {
+    if (!exitSummary) return null;
+    const exits: any[] = exitSummary.exits ?? [];
+    // By department bar chart
+    const byDept = Object.entries(exitSummary.by_department ?? {})
+      .map(([name, count]) => ({ name: name.length > 18 ? name.slice(0,17)+"…" : name, count: count as number }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    // By reason
+    const byReason = [
+      { name: "Resignation",     value: exitSummary.by_reason?.resignation     ?? 0, fill: COLORS.amber  },
+      { name: "Termination",     value: exitSummary.by_reason?.termination     ?? 0, fill: COLORS.rose   },
+      { name: "End of Contract", value: exitSummary.by_reason?.end_of_contract ?? 0, fill: COLORS.slate  },
+    ].filter(d => d.value > 0);
+    // By type
+    const regrettable    = exitSummary.by_type?.regrettable     ?? 0;
+    const nonRegrettable = exitSummary.by_type?.non_regrettable ?? 0;
+    return { exits, byDept, byReason, regrettable, nonRegrettable, total: exitSummary.total ?? 0 };
+  }, [exitSummary]);
+
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
     departments, positions, employees, leaveSummary, performanceSummary, metrics: a,
   }), [departments, positions, employees, leaveSummary, performanceSummary, a]);
 
-  const exportFilter = useMemo(() => ({ from: exportFrom, to: exportTo }), [exportFrom, exportTo]);
-
   const handleExcel = useCallback(async () => {
-    setExporting("excel");
+    setExporting("excel"); setShowExportBuilder(false);
     try {
       const { exportExcel } = await import("@/lib/analyticsExport");
-      await exportExcel(exportData, exportFilter);
+      await exportExcel(exportData, sections);
     } catch (e) { console.error("Excel export failed:", e); }
     finally { setExporting(null); }
-  }, [exportData, exportFilter]);
+  }, [exportData, sections]);
 
   const handlePptx = useCallback(async () => {
-    setExporting("pptx");
+    setExporting("pptx"); setShowExportBuilder(false);
     try {
       const { exportPowerPoint } = await import("@/lib/analyticsExport");
-      await exportPowerPoint(exportData, exportFilter);
+      await exportPowerPoint(exportData, sections);
     } catch (e) { console.error("PPTX export failed:", e); }
     finally { setExporting(null); }
-  }, [exportData, exportFilter]);
+  }, [exportData, sections]);
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -340,35 +531,27 @@ export default function AnalyticsDashboard() {
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{employees.length} Employees</span>
             </div>
           </div>
-          {/* Export buttons */}
+          {/* Export builder trigger */}
           {!loading && !error && (
-            <div className="flex flex-col gap-2 shrink-0 min-w-[220px]">
-              <p className="text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-1">
-                <Download className="h-3 w-3" /> Export Report
-              </p>
-              {/* Date filter */}
-              <div className="grid grid-cols-2 gap-1.5">
-                <div>
-                  <p className="text-[9px] text-slate-500 mb-0.5 uppercase tracking-wide">From</p>
-                  <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-400" />
-                </div>
-                <div>
-                  <p className="text-[9px] text-slate-500 mb-0.5 uppercase tracking-wide">To</p>
-                  <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-400" />
-                </div>
-              </div>
-              <button onClick={handleExcel} disabled={!!exporting}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-60 transition-colors">
-                {exporting === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                {exporting === "excel" ? "Generating…" : "Excel (.xlsx)"}
+            <div className="shrink-0">
+              <button
+                onClick={() => setShowExportBuilder(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/15 transition-colors"
+              >
+                <Settings2 className="h-4 w-4" />
+                Build & Export Report
+                {enabledCount > 0 && (
+                  <span className="ml-1 rounded-full bg-cyan-400 px-1.5 py-0.5 text-[10px] font-bold text-slate-900">
+                    {enabledCount}
+                  </span>
+                )}
               </button>
-              <button onClick={handlePptx} disabled={!!exporting}
-                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/40 bg-orange-600/20 px-4 py-2.5 text-sm font-semibold text-orange-300 hover:bg-orange-600/30 disabled:opacity-60 transition-colors">
-                {exporting === "pptx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}
-                {exporting === "pptx" ? "Generating…" : "PowerPoint (.pptx)"}
-              </button>
+              {exporting && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Generating {exporting === "excel" ? "Excel" : "PowerPoint"}…
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -393,7 +576,7 @@ export default function AnalyticsDashboard() {
               icon={<Building2 className="h-4 w-4"/>} accent="bg-sky-500" />
             <MetricCard label="Positions" value={fmt(positions.length)}
               detail={`${a.filled} filled · ${a.vacant} vacant`}
-              icon={<BriefcaseBusiness className="h-4 w-4"/>} accent="bg-indigo-500" />
+              icon={<Briefcase className="h-4 w-4"/>} accent="bg-indigo-500" />
             <MetricCard label="Employees" value={fmt(employees.length)}
               detail={`${a.active} active`} sub={`${a.inactive + a.suspended} need attention`}
               icon={<Users className="h-4 w-4"/>} accent="bg-emerald-500" />
@@ -609,7 +792,664 @@ export default function AnalyticsDashboard() {
               </div>
             </ChartCard>
           </div>
+
+          {/* ── Performance Analytics ── */}
+          {performanceMetrics && performanceMetrics.totalReviewed > 0 && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Performance Analytics</span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </div>
+
+              {/* KPI strip */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: "Reviews Completed", value: String(performanceMetrics.reviewed),    accent: "bg-emerald-500", sub: `${performanceMetrics.pending} pending` },
+                  { label: "Avg Rating",         value: performanceMetrics.avgRating ? `${performanceMetrics.avgRating}/5` : "—", accent: "bg-amber-500", sub: "Overall organisation average" },
+                  { label: "Mid-Year Avg",       value: performanceMetrics.midAvg ? `${performanceMetrics.midAvg}/5` : "—",       accent: "bg-sky-500",   sub: `${performanceMetrics.midYearCount} reviews` },
+                  { label: "End-Year Avg",       value: performanceMetrics.endAvg ? `${performanceMetrics.endAvg}/5` : "—",       accent: "bg-violet-500",sub: `${performanceMetrics.endYearCount} reviews` },
+                ].map(k => (
+                  <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className={`h-1 w-full ${k.accent}`} />
+                    <div className="p-4">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">{k.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{k.value}</p>
+                      <p className="mt-1 text-xs text-slate-400">{k.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Charts row 1 */}
+              <div className="grid gap-4 lg:grid-cols-2">
+
+                {/* Rating distribution — horizontal bar */}
+                <ChartCard title="Rating Distribution" subtitle="How employees are rated across the 1–5 scale">
+                  <div className="space-y-2.5 pt-1">
+                    {performanceMetrics.ratingDist.map(r => {
+                      const pctVal = performanceMetrics.totalReviewed > 0
+                        ? Math.round((r.count / performanceMetrics.totalReviewed) * 100) : 0;
+                      return (
+                        <div key={r.rating} className="flex items-center gap-3">
+                          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white text-xs font-bold ${r.bg}`}>
+                            {r.rating}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-slate-600 dark:text-slate-400 truncate pr-2">{r.label}</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0">{r.count} ({pctVal}%)</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pctVal}%`, background: r.color }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Mid vs End year comparison */}
+                  {performanceMetrics.midAvg && performanceMetrics.endAvg && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Mid-Year Avg", val: performanceMetrics.midAvg, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-50 dark:bg-sky-950/30" },
+                        { label: "End-Year Avg", val: performanceMetrics.endAvg, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/30" },
+                      ].map(c => (
+                        <div key={c.label} className={`rounded-xl p-3 text-center ${c.bg}`}>
+                          <p className={`text-xl font-bold ${c.color}`}>{c.val}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{c.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ChartCard>
+
+                {/* Dept avg rating — bar chart */}
+                <ChartCard title="Average Rating by Department" subtitle="Which departments perform highest and lowest">
+                  {performanceMetrics.deptAvgBar.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={Math.max(performanceMetrics.deptAvgBar.length * 38, 160)}>
+                      <BarChart data={performanceMetrics.deptAvgBar} layout="vertical"
+                        margin={{ top: 4, right: 48, left: 8, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0"
+                          className="dark:[&>line]:stroke-slate-700" />
+                        <XAxis type="number" domain={[0, 5]} ticks={[1,2,3,4,5]}
+                          tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                        <YAxis type="category" dataKey="name"
+                          tick={{ fontSize: 10, fill: "#94a3b8" }} width={130} />
+                        <Tooltip content={<CustomTooltip />}
+                          formatter={(v: any, _: any, p: any) => [
+                            `${v}/5 (${p.payload.count} reviews, spread: ${p.payload.spread})`,
+                            p.payload.fullName,
+                          ]} />
+                        <Bar dataKey="avg" name="Avg Rating" radius={[0, 4, 4, 0]}>
+                          {performanceMetrics.deptAvgBar.map((d: any, i: number) => (
+                            <Cell key={i} fill={d.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">No department data.</p>}
+                </ChartCard>
+              </div>
+
+              {/* Charts row 2 — Variance */}
+              <div className="grid gap-4 lg:grid-cols-2">
+
+                {/* Variance bar — std_dev per department */}
+                <ChartCard title="Performance Variance by Department"
+                  subtitle="Standard deviation — higher value means more spread in employee ratings">
+                  {performanceMetrics.varianceBar.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={Math.max(performanceMetrics.varianceBar.length * 38, 160)}>
+                      <BarChart data={performanceMetrics.varianceBar} layout="vertical"
+                        margin={{ top: 4, right: 56, left: 8, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0"
+                          className="dark:[&>line]:stroke-slate-700" />
+                        <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                        <YAxis type="category" dataKey="name"
+                          tick={{ fontSize: 10, fill: "#94a3b8" }} width={130} />
+                        <Tooltip content={<CustomTooltip />}
+                          formatter={(v: any, _: any, p: any) => [
+                            `σ ${v} (min ${p.payload.min}, max ${p.payload.max})`,
+                            "Std Deviation",
+                          ]} />
+                        <Bar dataKey="std_dev" name="Std Deviation" radius={[0, 4, 4, 0]}>
+                          {performanceMetrics.varianceBar.map((d: any, i: number) => (
+                            <Cell key={i}
+                              fill={d.std_dev >= 1.5 ? COLORS.rose : d.std_dev >= 0.8 ? COLORS.amber : COLORS.emerald} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">Need multiple reviews per dept.</p>}
+                  {/* Legend */}
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                    {[
+                      { color: COLORS.emerald, label: "Low variance (σ < 0.8) — consistent team" },
+                      { color: COLORS.amber,   label: "Medium variance (σ 0.8–1.5) — some spread" },
+                      { color: COLORS.rose,    label: "High variance (σ ≥ 1.5) — needs attention" },
+                    ].map(l => (
+                      <span key={l.label} className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
+                        <span className="text-slate-500 dark:text-slate-400">{l.label}</span>
+                      </span>
+                    ))}
+                  </div>
+                </ChartCard>
+
+                {/* Dept comparison table + insight */}
+                <ChartCard title="Department Performance Summary"
+                  subtitle="Avg, min, max and spread of ratings per department">
+                  {performanceMetrics.byDept.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-100 dark:border-slate-800">
+                              {["Department","Reviews","Avg","Min","Max","σ"].map(h => (
+                                <th key={h} className="py-2 px-2 text-left font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {performanceMetrics.byDept.map((d: any, i: number) => {
+                              const isTop = i === 0;
+                              const isBot = i === performanceMetrics.byDept.length - 1 && performanceMetrics.byDept.length > 1;
+                              return (
+                                <tr key={d.department}
+                                  className={`${
+                                    isTop ? "bg-emerald-50 dark:bg-emerald-950/20" :
+                                    isBot ? "bg-rose-50 dark:bg-rose-950/20" : ""
+                                  }`}>
+                                  <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 max-w-[120px] truncate">
+                                    {isTop && <span className="mr-1">🥇</span>}
+                                    {isBot && <span className="mr-1">⚠️</span>}
+                                    {d.department}
+                                  </td>
+                                  <td className="py-2 px-2 text-center text-slate-600 dark:text-slate-400">{d.count}</td>
+                                  <td className="py-2 px-2 text-center font-bold" style={{ color:
+                                    d.avg_rating >= 4 ? COLORS.emerald :
+                                    d.avg_rating >= 3 ? COLORS.sky :
+                                    d.avg_rating >= 2 ? COLORS.amber : COLORS.rose }}>
+                                    {d.avg_rating.toFixed(1)}
+                                  </td>
+                                  <td className="py-2 px-2 text-center text-slate-500 dark:text-slate-400">{d.min_rating}</td>
+                                  <td className="py-2 px-2 text-center text-slate-500 dark:text-slate-400">{d.max_rating}</td>
+                                  <td className="py-2 px-2 text-center">
+                                    <span className={`font-semibold ${
+                                      d.std_dev >= 1.5 ? "text-rose-600 dark:text-rose-400" :
+                                      d.std_dev >= 0.8 ? "text-amber-600 dark:text-amber-400" :
+                                      "text-emerald-600 dark:text-emerald-400"}`}>
+                                      {d.std_dev.toFixed(2)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Auto-generated insight */}
+                      <div className="mt-4 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/20 px-4 py-3">
+                        <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">📊 Performance Insight</p>
+                        <p className="text-[11px] text-indigo-600 dark:text-indigo-400 leading-relaxed">
+                          {performanceMetrics.gap && parseFloat(performanceMetrics.gap) > 0
+                            ? `${performanceMetrics.best?.department} leads with an average of ${performanceMetrics.best?.avg_rating}/5, while ${performanceMetrics.worst?.department} scores ${performanceMetrics.worst?.avg_rating}/5 — a ${performanceMetrics.gap}-point gap. ${
+                                parseFloat(performanceMetrics.gap) >= 2
+                                  ? "This significant variance warrants targeted coaching and structured support for underperforming departments."
+                                  : "Performance is relatively consistent across departments."
+                              }`
+                            : performanceMetrics.byDept.length === 1
+                              ? `Only ${performanceMetrics.byDept[0]?.department} has finalised reviews (avg ${performanceMetrics.byDept[0]?.avg_rating}/5). Extend reviews to all departments for a complete picture.`
+                              : "All departments show consistent performance. Continue current development initiatives."
+                          }
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="py-8 text-center text-sm text-slate-400">No finalised reviews yet.</p>
+                  )}
+                </ChartCard>
+              </div>
+            </>
+          )}
+
+          {/* ── Leave Analytics ── */}
+          {leaveMetrics && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Leave Analytics</span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </div>
+
+              {/* Leave KPI strip */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: "Total Days Taken",    value: leaveMetrics.totalDays,        accent: "bg-cyan-500",    sub: "All leave types combined" },
+                  { label: "Annual Leave Used",   value: leaveMetrics.totals.annual,    accent: "bg-sky-500",     sub: `${leaveMetrics.utilisationRate}% utilisation rate` },
+                  { label: "Avg Days / Employee", value: leaveMetrics.avgUsed,          accent: "bg-violet-500",  sub: "Annual leave average" },
+                  { label: "Not Used Leave",      value: leaveMetrics.notUsed,          accent: "bg-amber-500",   sub: `${leaveMetrics.totalEmployees - leaveMetrics.notUsed} employees have taken leave` },
+                ].map(k => (
+                  <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className={`h-1 w-full ${k.accent}`} />
+                    <div className="p-4">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">{k.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{k.value}</p>
+                      <p className="mt-1 text-xs text-slate-400">{k.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Leave charts */}
+              <div className="grid gap-4 lg:grid-cols-2">
+
+                {/* Leave by type — horizontal bar */}
+                <ChartCard title="Leave Days by Type" subtitle="Total days taken across all leave categories">
+                  {leaveMetrics.byType.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={leaveMetrics.byType} layout="vertical"
+                        margin={{ top: 4, right: 48, left: 16, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0"
+                          className="dark:[&>line]:stroke-slate-700" />
+                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} width={90} />
+                        <Tooltip content={<CustomTooltip />} formatter={(v) => [`${v} days`, "Used"]} />
+                        <Bar dataKey="days" name="Days Used" radius={[0, 4, 4, 0]}>
+                          {leaveMetrics.byType.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">No leave data yet.</p>}
+                  {/* Type legend */}
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {leaveMetrics.byType.map(d => (
+                      <span key={d.name} className="flex items-center gap-1.5 text-xs">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.fill }} />
+                        <span className="text-slate-600 dark:text-slate-400">{d.name}: <strong className="text-slate-800 dark:text-slate-200">{d.days}d</strong></span>
+                      </span>
+                    ))}
+                  </div>
+                </ChartCard>
+
+                {/* Annual leave utilisation per employee — bar */}
+                <ChartCard title="Annual Leave Utilisation" subtitle="Days used vs entitlement — top 10 employees by usage">
+                  {leaveMetrics.perEmployee.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={leaveMetrics.perEmployee}
+                        margin={{ top: 4, right: 8, left: -20, bottom: 32 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
+                          className="dark:[&>line]:stroke-slate-700" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          angle={-35} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
+                        <Tooltip content={<CustomTooltip />}
+                          formatter={(v, n) => [`${v} days`, n]}
+                          labelFormatter={(_, p) => p[0]?.payload?.fullName ?? ""} />
+                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                        <Bar dataKey="entitlement" name="Entitlement" fill={COLORS.slate} radius={[0,0,0,0]} opacity={0.3} />
+                        <Bar dataKey="used"        name="Used"        fill={COLORS.cyan}  radius={[3,3,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">No annual leave data.</p>}
+                </ChartCard>
+              </div>
+
+              {/* Leave utilisation rate + breakdown insight */}
+              <div className="grid gap-4 lg:grid-cols-3">
+
+                {/* Utilisation donut */}
+                <ChartCard title="Annual Leave Utilisation Rate" subtitle="% of total entitlement consumed">
+                  <div className="flex flex-col items-center justify-center py-4 gap-3">
+                    {/* Circular progress */}
+                    <div className="relative flex h-36 w-36 items-center justify-center">
+                      <svg className="h-36 w-36 -rotate-90" viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" strokeWidth="12"
+                          className="dark:stroke-slate-800" />
+                        <circle cx="60" cy="60" r="50" fill="none"
+                          stroke={leaveMetrics.utilisationRate >= 80 ? COLORS.rose
+                            : leaveMetrics.utilisationRate >= 50 ? COLORS.amber
+                            : COLORS.emerald}
+                          strokeWidth="12"
+                          strokeDasharray={`${leaveMetrics.utilisationRate * 3.14} 314`}
+                          strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute text-center">
+                        <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{leaveMetrics.utilisationRate}%</p>
+                        <p className="text-[10px] text-slate-400">Utilised</p>
+                      </div>
+                    </div>
+                    <div className="w-full space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400">Total Entitlement</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">{leaveMetrics.totalEntitlement} days</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400">Annual Leave Used</span>
+                        <span className="font-semibold text-cyan-600 dark:text-cyan-400">{leaveMetrics.totals.annual} days</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400">Remaining</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">{leaveMetrics.totalEntitlement - leaveMetrics.totals.annual} days</span>
+                      </div>
+                    </div>
+                  </div>
+                </ChartCard>
+
+                {/* Leave type donut */}
+                <ChartCard title="Leave Type Split" subtitle="Proportion of days by category">
+                  {leaveMetrics.byType.length > 0 ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={190}>
+                        <PieChart>
+                          <Pie data={leaveMetrics.byType.map(d => ({ name: d.name, value: d.days, fill: d.fill }))}
+                            cx="50%" cy="50%" innerRadius={52} outerRadius={80} dataKey="value">
+                            {leaveMetrics.byType.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                          </Pie>
+                          <Tooltip content={<CustomTooltip />} formatter={v => [`${v} days`]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="mt-1 space-y-1">
+                        {leaveMetrics.byType.map(d => {
+                          const pctVal = leaveMetrics.totalDays > 0 ? Math.round((d.days / leaveMetrics.totalDays) * 100) : 0;
+                          return (
+                            <div key={d.name} className="flex items-center justify-between text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full" style={{ background: d.fill }} />
+                                <span className="text-slate-600 dark:text-slate-400">{d.name}</span>
+                              </span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{d.days}d · {pctVal}%</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">No leave data.</p>}
+                </ChartCard>
+
+                {/* Insight card */}
+                <ChartCard title="Leave Insights" subtitle="Key observations from leave data">
+                  <div className="space-y-3 pt-1">
+                    {[
+                      {
+                        label: "Fully Used Entitlement",
+                        value: `${leaveMetrics.fullyUsed} employees`,
+                        color: "text-rose-600 dark:text-rose-400",
+                        bg: "bg-rose-50 dark:bg-rose-950/30",
+                        note: leaveMetrics.fullyUsed > 0 ? "Used all annual leave — burnout risk if work demands are high" : "No employees have exhausted their leave",
+                      },
+                      {
+                        label: "Zero Leave Taken",
+                        value: `${leaveMetrics.notUsed} employees`,
+                        color: "text-amber-600 dark:text-amber-400",
+                        bg: "bg-amber-50 dark:bg-amber-950/30",
+                        note: leaveMetrics.notUsed > 0 ? "Haven't taken any leave — may indicate work pressure or disengagement" : "All employees have taken at least some leave",
+                      },
+                      {
+                        label: "Sick Leave Total",
+                        value: `${leaveMetrics.totals.sick} days`,
+                        color: "text-violet-600 dark:text-violet-400",
+                        bg: "bg-violet-50 dark:bg-violet-950/30",
+                        note: leaveMetrics.totals.sick > leaveMetrics.totalEmployees * 3 ? "Above average — consider a staff wellness review" : "Within expected range",
+                      },
+                      {
+                        label: "Utilisation Rate",
+                        value: `${leaveMetrics.utilisationRate}%`,
+                        color: leaveMetrics.utilisationRate > 80 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400",
+                        bg: leaveMetrics.utilisationRate > 80 ? "bg-rose-50 dark:bg-rose-950/30" : "bg-emerald-50 dark:bg-emerald-950/30",
+                        note: leaveMetrics.utilisationRate > 80 ? "High utilisation — ensure adequate staffing cover" : "Healthy leave utilisation across the workforce",
+                      },
+                    ].map(item => (
+                      <div key={item.label} className={`rounded-xl p-3 ${item.bg}`}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{item.label}</span>
+                          <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">{item.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </ChartCard>
+              </div>
+            </>
+          )}
+
+          {/* ── Exit Analysis ── */}
+          {exitMetrics && exitMetrics.total > 0 && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Exit Analysis</span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </div>
+
+              {/* Exit KPI strip */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: "Total Exits",       value: exitMetrics.total,           accent: "bg-slate-500",   sub: "All time" },
+                  { label: "Resignations",      value: exitSummary.by_reason?.resignation ?? 0,     accent: "bg-amber-500",  sub: "Voluntary" },
+                  { label: "Terminations",      value: exitSummary.by_reason?.termination ?? 0,     accent: "bg-rose-500",   sub: "Employer-initiated" },
+                  { label: "Regrettable Exits", value: exitMetrics.regrettable,     accent: "bg-violet-500", sub: "Talent we wanted to keep" },
+                ].map(k => (
+                  <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className={`h-1 w-full ${k.accent}`} />
+                    <div className="p-4">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">{k.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{k.value}</p>
+                      <p className="mt-1 text-xs text-slate-400">{k.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Exit charts row */}
+              <div className="grid gap-4 lg:grid-cols-2">
+
+                {/* Exits by department — horizontal bar */}
+                <ChartCard title="Exits by Department" subtitle="Number of exited employees per department">
+                  {exitMetrics.byDept.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={Math.max(exitMetrics.byDept.length * 36, 180)}>
+                      <BarChart data={exitMetrics.byDept} layout="vertical"
+                        margin={{ top: 4, right: 32, left: 8, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0"
+                          className="dark:[&>line]:stroke-slate-700" />
+                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} width={140} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="count" name="Exits" fill={COLORS.rose} radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="py-8 text-center text-sm text-slate-400">No exits recorded yet.</p>}
+                </ChartCard>
+
+                {/* Exits by reason — donut + type breakdown */}
+                <ChartCard title="Exit Reasons &amp; Types" subtitle="Why employees left and whether it was regrettable">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Reason donut */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">By Reason</p>
+                      {exitMetrics.byReason.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={180}>
+                          <PieChart>
+                            <Pie data={exitMetrics.byReason} cx="50%" cy="50%"
+                              innerRadius={45} outerRadius={72} dataKey="value">
+                              {exitMetrics.byReason.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                            </Pie>
+                            <Tooltip content={<CustomTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : <p className="py-8 text-center text-xs text-slate-400">No data</p>}
+                      <div className="mt-1 space-y-1">
+                        {exitMetrics.byReason.map(d => (
+                          <div key={d.name} className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full" style={{ background: d.fill }} />
+                              <span className="text-slate-600 dark:text-slate-400">{d.name}</span>
+                            </span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{d.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Type split */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">By Type</p>
+                      <div className="space-y-3 mt-4">
+                        {[
+                          { label: "Regrettable",     value: exitMetrics.regrettable,    color: "bg-rose-500",    text: "text-rose-700 dark:text-rose-300",     note: "Talent lost" },
+                          { label: "Non-Regrettable", value: exitMetrics.nonRegrettable,  color: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300", note: "Accepted departure" },
+                        ].map(t => {
+                          const pct = exitMetrics.total > 0 ? Math.round((t.value / exitMetrics.total) * 100) : 0;
+                          return (
+                            <div key={t.label}>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className={`font-semibold ${t.text}`}>{t.label}</span>
+                                <span className="text-slate-500 dark:text-slate-400">{t.value} ({pct}%)</span>
+                              </div>
+                              <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                <div className={`h-full rounded-full ${t.color}`} style={{ width: `${pct}%` }} />
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{t.note}</p>
+                            </div>
+                          );
+                        })}
+                        {/* Retention insight */}
+                        {exitMetrics.total > 0 && (
+                          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Retention Insight</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                              {exitMetrics.regrettable > exitMetrics.nonRegrettable
+                                ? `${Math.round(exitMetrics.regrettable / exitMetrics.total * 100)}% of exits are regrettable. Review compensation and career development to improve retention.`
+                                : `${Math.round(exitMetrics.nonRegrettable / exitMetrics.total * 100)}% of exits are non-regrettable — attrition is largely healthy and manageable.`}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </ChartCard>
+              </div>
+            </>
+          )}
         </>
+      )}
+      {/* ── Export Builder Modal ── */}
+      {showExportBuilder && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setShowExportBuilder(false)}>
+          <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-cyan-500" /> Build Custom Report
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Choose sections and date ranges, then export to Excel or PowerPoint
+                </p>
+              </div>
+              <button onClick={() => setShowExportBuilder(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Select all / none */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-2.5 shrink-0 bg-slate-50 dark:bg-slate-900/60">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">{enabledCount}</span> of {Object.keys(sections).length} sections selected
+              </span>
+              <div className="flex gap-3">
+                <button onClick={() => setSections(s => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, { ...v, enabled: true }])) as typeof s)}
+                  className="text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 transition-colors">Select all</button>
+                <span className="text-slate-300 dark:text-slate-700">·</span>
+                <button onClick={() => setSections(s => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, { ...v, enabled: false }])) as typeof s)}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 transition-colors">Clear all</button>
+              </div>
+            </div>
+
+            {/* Section list */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+              {(Object.entries(SECTION_META) as [SectionKey, typeof SECTION_META[SectionKey]][]).map(([key, meta]) => {
+                const cfg = sections[key];
+                return (
+                  <div key={key} className={`rounded-xl border-2 transition-all ${
+                    cfg.enabled
+                      ? "border-cyan-200 bg-cyan-50/50 dark:border-cyan-900/40 dark:bg-cyan-950/20"
+                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+                  }`}>
+                    {/* Section header row */}
+                    <button
+                      onClick={() => toggleSection(key)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                    >
+                      <span className="text-xl">{meta.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold ${
+                          cfg.enabled ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-500"
+                        }`}>{meta.label}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{meta.desc}</p>
+                      </div>
+                      <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
+                        cfg.enabled
+                          ? "border-cyan-500 bg-cyan-500"
+                          : "border-slate-300 dark:border-slate-600"
+                      }`}>
+                        {cfg.enabled && <span className="text-white text-[10px] font-bold">✓</span>}
+                      </div>
+                    </button>
+
+                    {/* Date range — only shown when enabled */}
+                    {cfg.enabled && (
+                      <div className="px-4 pb-3 pt-0">
+                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-12">From</span>
+                          <input type="date" value={cfg.from}
+                            onChange={e => updateSection(key, "from", e.target.value)}
+                            className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none" />
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 w-6">To</span>
+                          <input type="date" value={cfg.to}
+                            onChange={e => updateSection(key, "to", e.target.value)}
+                            className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 focus:outline-none" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 px-6 py-4">
+              {enabledCount === 0 && (
+                <p className="mb-3 text-center text-xs text-amber-600 dark:text-amber-400">
+                  ⚠ Select at least one section to export.
+                </p>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setShowExportBuilder(false)}
+                  className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleExcel} disabled={!!exporting || enabledCount === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 disabled:opacity-50 transition-colors">
+                  {exporting === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                  {exporting === "excel" ? "Generating…" : "Excel"}
+                </button>
+                <button onClick={handlePptx} disabled={!!exporting || enabledCount === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-50 transition-colors">
+                  {exporting === "pptx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}
+                  {exporting === "pptx" ? "Generating…" : "PowerPoint"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

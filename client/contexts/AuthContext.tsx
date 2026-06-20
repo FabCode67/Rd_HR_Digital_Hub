@@ -24,44 +24,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const apiBaseUrl = `${API_CONFIG.baseURL}${API_CONFIG.apiPrefix}`;
 
   const fetchCurrentUser = async (accessToken: string): Promise<Employee> => {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to load current user");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Failed to load current user");
+      return response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return response.json();
   };
 
   // Load token from localStorage on mount
   useEffect(() => {
     const storedToken = localStorage.getItem("auth_token");
-    if (storedToken) {
-      try {
-        setToken(storedToken);
-        void fetchCurrentUser(storedToken)
-          .then((currentUser) => setUser(currentUser))
-          .catch(() => {
-            const decoded: any = jwtDecode(storedToken);
-            setUser({
-              id: "" as any,
-              full_name: decoded.email || "",
-              email: decoded.email,
-              role: decoded.role,
-              status: "ACTIVE",
-              created_at: "",
-              updated_at: "",
-            });
-          });
-      } catch (e) {
-        console.error("Failed to decode token", e);
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user");
-      }
+    if (!storedToken) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+    setToken(storedToken);
+    fetchCurrentUser(storedToken)
+      .then(currentUser => setUser(currentUser))
+      .catch(() => {
+        // Backend unreachable or token expired — fall back to decoded JWT
+        try {
+          const decoded: any = jwtDecode(storedToken);
+          setUser({
+            id: "" as any,
+            full_name: decoded.email || "",
+            email: decoded.email,
+            role: decoded.role,
+            status: "ACTIVE",
+            created_at: "",
+            updated_at: "",
+          });
+        } catch {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("user");
+        }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
