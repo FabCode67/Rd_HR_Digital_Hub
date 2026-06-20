@@ -12,7 +12,8 @@ from pydantic import BaseModel, validator
 
 from app.core.database import get_db
 from app.models.models import (
-    PerformanceReview, PerformanceGoal, Employee, UserRole,
+    PerformanceReview, PerformanceGoal, Employee,
+    EmployeePosition, Position, Department, UserRole,
 )
 from app.routers.auth import require_admin, get_current_user
 
@@ -133,9 +134,23 @@ def get_summary(
     db: Session = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """All employees with their review status for a given year/cycle."""
+    """All employees with review status, ratings, and department-level variance."""
     y = year or datetime.utcnow().year
     employees = db.query(Employee).filter(Employee.status == "ACTIVE").all()
+
+    # Build a dept lookup: employee_id -> department_name
+    def get_dept(emp_id) -> Optional[str]:
+        ep = db.query(EmployeePosition).filter(
+            EmployeePosition.employee_id == emp_id,
+            EmployeePosition.is_current == True,
+        ).first()
+        if not ep:
+            return None
+        pos = db.query(Position).filter(Position.id == ep.position_id).first()
+        if not pos:
+            return None
+        dept = db.query(Department).filter(Department.id == pos.department_id).first()
+        return dept.name if dept else None
 
     result = []
     for emp in employees:
@@ -146,30 +161,70 @@ def get_summary(
         if cycle:
             q = q.filter(PerformanceReview.cycle == cycle)
         reviews = q.all()
+        dept_name = get_dept(emp.id)
         result.append({
             "employee_id":   str(emp.id),
             "employee_name": emp.full_name,
             "email":         emp.email,
-            "department":    None,
+            "department":    dept_name,
             "reviews":       [_fmt_review(r, include_goals=False) for r in reviews],
             "reviewed":      len(reviews) > 0,
         })
 
-    # Summary stats
-    total     = len(result)
-    reviewed  = sum(1 for e in result if e["reviewed"])
-    avg_rating = None
+    # Overall stats
+    total    = len(result)
+    reviewed = sum(1 for e in result if e["reviewed"])
     all_ratings = [r["rating"] for e in result for r in e["reviews"] if not r["is_draft"]]
-    if all_ratings:
-        avg_rating = round(sum(all_ratings) / len(all_ratings), 2)
+    avg_rating  = round(sum(all_ratings) / len(all_ratings), 2) if all_ratings else None
+
+    # ── Department variance ───────────────────────────────────────────────
+    dept_map: dict = {}  # dept_name -> list of finalised ratings
+    for emp in result:
+        dept = emp["department"] or "Unknown"
+        for r in emp["reviews"]:
+            if not r["is_draft"]:
+                if dept not in dept_map:
+                    dept_map[dept] = []
+                dept_map[dept].append(r["rating"])
+
+    dept_variance = []
+    for dept, ratings in dept_map.items():
+        if not ratings:
+            continue
+        n     = len(ratings)
+        avg   = sum(ratings) / n
+        # variance = mean of squared deviations
+        variance = sum((r - avg) ** 2 for r in ratings) / n if n > 1 else 0.0
+        import math
+        std_dev  = math.sqrt(variance)
+        dept_variance.append({
+            "department":  dept,
+            "count":       n,
+            "avg_rating":  round(avg, 2),
+            "min_rating":  min(ratings),
+            "max_rating":  max(ratings),
+            "variance":    round(variance, 3),
+            "std_dev":     round(std_dev, 3),
+            "spread":      max(ratings) - min(ratings),
+        })
+
+    # Sort by avg_rating desc
+    dept_variance.sort(key=lambda x: x["avg_rating"], reverse=True)
+
+    # Rating distribution across all finalised reviews
+    dist = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in all_ratings:
+        dist[r] = dist.get(r, 0) + 1
 
     return {
         "year": y, "cycle": cycle,
         "total_employees": total,
-        "reviewed": reviewed,
-        "pending": total - reviewed,
-        "average_rating": avg_rating,
-        "employees": result,
+        "reviewed":        reviewed,
+        "pending":         total - reviewed,
+        "average_rating":  avg_rating,
+        "rating_distribution": dist,
+        "by_department":   dept_variance,
+        "employees":       result,
     }
 
 

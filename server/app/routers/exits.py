@@ -14,7 +14,7 @@ from pydantic import BaseModel, validator
 from app.core.database import get_db
 from app.models.models import (
     EmployeeExit, Employee, EmployeePosition,
-    Position, EmployeeStatus, UserRole,
+    Position, Department, EmployeeStatus, UserRole,
 )
 from app.routers.auth import require_admin, get_current_user
 
@@ -66,21 +66,22 @@ class ExitUpdate(BaseModel):
 
 # ── Formatter ──────────────────────────────────────────────────────────────────
 
-def _fmt(e: EmployeeExit) -> dict:
+def _fmt(e: EmployeeExit, department_name: str = None) -> dict:
     return {
-        "id":             str(e.id),
-        "employee_id":    str(e.employee_id),
-        "exit_date":      e.exit_date.isoformat() if e.exit_date else None,
-        "exit_reason":    e.exit_reason,
+        "id":               str(e.id),
+        "employee_id":      str(e.employee_id),
+        "exit_date":        e.exit_date.isoformat() if e.exit_date else None,
+        "exit_reason":      e.exit_reason,
         "exit_reason_label": REASON_LABELS.get(e.exit_reason, e.exit_reason),
-        "exit_type":      e.exit_type,
-        "exit_type_label":   TYPE_LABELS.get(e.exit_type, e.exit_type),
-        "position_id":    str(e.position_id) if e.position_id else None,
-        "position_title": e.position_title,
-        "next_move":      e.next_move,
-        "comments":       e.comments,
-        "processed_by":   e.processed_by,
-        "created_at":     e.created_at.isoformat() if e.created_at else None,
+        "exit_type":        e.exit_type,
+        "exit_type_label":  TYPE_LABELS.get(e.exit_type, e.exit_type),
+        "position_id":      str(e.position_id) if e.position_id else None,
+        "position_title":   e.position_title,
+        "department_name":  department_name,
+        "next_move":        e.next_move,
+        "comments":         e.comments,
+        "processed_by":     e.processed_by,
+        "created_at":       e.created_at.isoformat() if e.created_at else None,
     }
 
 
@@ -108,21 +109,35 @@ def list_exits(
 
     exits = q.order_by(EmployeeExit.exit_date.desc()).all()
 
-    # Enrich with employee name
+    # Enrich with employee name + department
     result = []
     for ex in exits:
         emp = db.query(Employee).filter(Employee.id == ex.employee_id).first()
-        row = _fmt(ex)
+        # Resolve department from position snapshot
+        dept_name = None
+        if ex.position_id:
+            pos = db.query(Position).filter(Position.id == ex.position_id).first()
+            if pos and pos.department_id:
+                dept = db.query(Department).filter(Department.id == pos.department_id).first()
+                dept_name = dept.name if dept else None
+        row = _fmt(ex, department_name=dept_name)
         row["employee_name"]  = emp.full_name if emp else "Unknown"
         row["employee_email"] = emp.email     if emp else None
         row["employee_status"]= emp.status    if emp else None
         result.append(row)
 
+    # Aggregate by department
+    dept_counts: dict = {}
+    for e in result:
+        d = e.get("department_name") or "Unknown"
+        dept_counts[d] = dept_counts.get(d, 0) + 1
+
     return {
-        "total":       len(result),
-        "exits":       result,
-        "by_reason":   {r: sum(1 for e in result if e["exit_reason"] == r) for r in VALID_REASONS},
-        "by_type":     {t: sum(1 for e in result if e["exit_type"]   == t) for t in VALID_TYPES},
+        "total":          len(result),
+        "exits":          result,
+        "by_reason":      {r: sum(1 for e in result if e["exit_reason"] == r) for r in VALID_REASONS},
+        "by_type":        {t: sum(1 for e in result if e["exit_type"]   == t) for t in VALID_TYPES},
+        "by_department":  dict(sorted(dept_counts.items(), key=lambda x: x[1], reverse=True)),
     }
 
 
