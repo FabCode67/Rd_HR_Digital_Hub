@@ -164,6 +164,7 @@ export default function AnalyticsDashboard() {
   const [leaveSummary, setLeaveSummary]           = useState<any>(null);
   const [performanceSummary, setPerformanceSummary] = useState<any>(null);
   const [exitSummary, setExitSummary]               = useState<any>(null);
+  const [turnoverData, setTurnoverData]               = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
   const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
@@ -228,11 +229,13 @@ export default function AnalyticsDashboard() {
           apiClient.leave.getSummary(new Date().getFullYear()),
           apiClient.performance.getSummary(new Date().getFullYear()),
           apiClient.exits.list(),
-        ]).then(([leaveResult, perfResult, exitResult]) => {
+          apiClient.exits.getTurnover(new Date().getFullYear()),
+        ]).then(([leaveResult, perfResult, exitResult, turnoverResult]) => {
           if (!mounted) return;
-          if (leaveResult.status === "fulfilled") setLeaveSummary(leaveResult.value);
-          if (perfResult.status  === "fulfilled") setPerformanceSummary(perfResult.value);
-          if (exitResult.status  === "fulfilled") setExitSummary(exitResult.value);
+          if (leaveResult.status    === "fulfilled") setLeaveSummary(leaveResult.value);
+          if (perfResult.status     === "fulfilled") setPerformanceSummary(perfResult.value);
+          if (exitResult.status     === "fulfilled") setExitSummary(exitResult.value);
+          if (turnoverResult.status === "fulfilled") setTurnoverData(turnoverResult.value);
         });
       } catch (err) {
         if (!mounted) return;
@@ -1212,6 +1215,232 @@ export default function AnalyticsDashboard() {
                   </div>
                 </ChartCard>
               </div>
+            </>
+          )}
+
+          {/* ── Turnover & Retention Analysis ── */}
+          {turnoverData && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Turnover &amp; Retention</span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </div>
+
+              {/* KPI strip */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  {
+                    label: "Turnover Rate",
+                    value: `${turnoverData.turnover_rate}%`,
+                    accent: turnoverData.turnover_rate > 15 ? "bg-rose-500" : turnoverData.turnover_rate > 8 ? "bg-amber-500" : "bg-emerald-500",
+                    sub: `${turnoverData.year} · Industry avg ~10–15%`,
+                  },
+                  {
+                    label: "Retention Rate",
+                    value: `${turnoverData.retention_rate}%`,
+                    accent: turnoverData.retention_rate >= 90 ? "bg-emerald-500" : turnoverData.retention_rate >= 80 ? "bg-amber-500" : "bg-rose-500",
+                    sub: "Employees who stayed",
+                  },
+                  {
+                    label: "Voluntary Exits",
+                    value: String(turnoverData.voluntary_exits),
+                    accent: "bg-amber-500",
+                    sub: `${turnoverData.voluntary_rate}% voluntary turnover`,
+                  },
+                  {
+                    label: "Involuntary Exits",
+                    value: String(turnoverData.involuntary_exits),
+                    accent: "bg-rose-500",
+                    sub: "Terminations + end of contract",
+                  },
+                  {
+                    label: "vs Last Year",
+                    value: turnoverData.prev_year_exits === 0
+                      ? "New"
+                      : `${turnoverData.yoy_change > 0 ? "+" : ""}${turnoverData.yoy_change}%`,
+                    accent: turnoverData.yoy_change > 0 ? "bg-rose-500" : "bg-emerald-500",
+                    sub: `${turnoverData.prev_year_exits} exits in ${turnoverData.year - 1}`,
+                  },
+                ].map(k => (
+                  <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className={`h-1 w-full ${k.accent}`} />
+                    <div className="p-4">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 leading-snug">{k.label}</p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{k.value}</p>
+                      <p className="mt-1 text-xs text-slate-400">{k.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Headcount vs exits overview */}
+              <div className="grid gap-4 lg:grid-cols-3">
+
+                {/* Retention gauge */}
+                <ChartCard title="Retention Rate" subtitle={`${turnoverData.year} workforce stability`}>
+                  <div className="flex flex-col items-center py-4 gap-4">
+                    <div className="relative flex h-40 w-40 items-center justify-center">
+                      <svg className="h-40 w-40 -rotate-90" viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" strokeWidth="14"
+                          className="dark:stroke-slate-800" />
+                        <circle cx="60" cy="60" r="50" fill="none"
+                          stroke={turnoverData.retention_rate >= 90 ? COLORS.emerald : turnoverData.retention_rate >= 80 ? COLORS.amber : COLORS.rose}
+                          strokeWidth="14"
+                          strokeDasharray={`${Math.min(turnoverData.retention_rate, 100) * 3.14} 314`}
+                          strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute text-center">
+                        <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{turnoverData.retention_rate}%</p>
+                        <p className="text-xs text-slate-400">Retained</p>
+                      </div>
+                    </div>
+                    <div className="w-full space-y-2 text-xs">
+                      {[
+                        { label: "Active Employees",    value: turnoverData.active_now,         color: "text-emerald-600 dark:text-emerald-400" },
+                        { label: "Exited This Year",    value: turnoverData.exits_this_year,    color: "text-rose-600 dark:text-rose-400"    },
+                        { label: "Avg Headcount",       value: turnoverData.avg_headcount,       color: "text-slate-600 dark:text-slate-400"  },
+                        { label: "Total Employees",     value: turnoverData.total_employees,     color: "text-slate-600 dark:text-slate-400"  },
+                      ].map(r => (
+                        <div key={r.label} className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">{r.label}</span>
+                          <span className={`font-bold ${r.color}`}>{r.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Interpretation */}
+                    <div className={`w-full rounded-xl p-3 text-center ${
+                      turnoverData.retention_rate >= 90 ? "bg-emerald-50 dark:bg-emerald-950/30" :
+                      turnoverData.retention_rate >= 80 ? "bg-amber-50 dark:bg-amber-950/30" :
+                      "bg-rose-50 dark:bg-rose-950/30"
+                    }`}>
+                      <p className={`text-xs font-semibold ${
+                        turnoverData.retention_rate >= 90 ? "text-emerald-700 dark:text-emerald-300" :
+                        turnoverData.retention_rate >= 80 ? "text-amber-700 dark:text-amber-300" :
+                        "text-rose-700 dark:text-rose-300"
+                      }`}>
+                        {turnoverData.retention_rate >= 90
+                          ? "Excellent retention — workforce is highly stable"
+                          : turnoverData.retention_rate >= 80
+                          ? "Good retention — minor attrition pressure, monitor closely"
+                          : "High turnover — urgent review of compensation, culture and management needed"}
+                      </p>
+                    </div>
+                  </div>
+                </ChartCard>
+
+                {/* Voluntary vs involuntary */}
+                <ChartCard title="Exit Composition" subtitle="Voluntary resignations vs employer-initiated">
+                  <div className="space-y-4 pt-2">
+                    {[
+                      { label: "Voluntary (Resignation)",       value: turnoverData.voluntary_exits,   total: turnoverData.exits_this_year, color: "bg-amber-500",   text: "text-amber-700 dark:text-amber-300",   note: "Employee-initiated — review engagement & compensation" },
+                      { label: "Involuntary (Termination/EOC)", value: turnoverData.involuntary_exits, total: turnoverData.exits_this_year, color: "bg-rose-500",    text: "text-rose-700 dark:text-rose-300",     note: "Employer-initiated — review hiring quality & contract use" },
+                    ].map(item => {
+                      const pctVal = item.total > 0 ? Math.round((item.value / item.total) * 100) : 0;
+                      return (
+                        <div key={item.label} className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-semibold ${item.text}`}>{item.label}</span>
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{item.value} ({pctVal}%)</span>
+                          </div>
+                          <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                            <div className={`h-full rounded-full ${item.color}`} style={{ width: `${pctVal}%` }} />
+                          </div>
+                          <p className="text-[10px] text-slate-400 italic">{item.note}</p>
+                        </div>
+                      );
+                    })}
+
+                    {/* Rate context */}
+                    <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Rate Benchmarks</p>
+                      {[
+                        { label: "Turnover Rate",   value: `${turnoverData.turnover_rate}%`,  note: turnoverData.turnover_rate <= 10 ? "✅ Healthy" : turnoverData.turnover_rate <= 20 ? "⚠️ Moderate" : "🔴 High" },
+                        { label: "Voluntary Rate",  value: `${turnoverData.voluntary_rate}%`, note: turnoverData.voluntary_rate <= 8  ? "✅ Healthy" : turnoverData.voluntary_rate <= 15  ? "⚠️ Moderate" : "🔴 High" },
+                        { label: "YoY Change",      value: `${turnoverData.yoy_change > 0 ? "+" : ""}${turnoverData.yoy_change}%`, note: turnoverData.yoy_change <= 0 ? "✅ Improving" : "📈 Increasing" },
+                      ].map(r => (
+                        <div key={r.label} className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500 dark:text-slate-400">{r.label}</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">{r.value} {r.note}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </ChartCard>
+
+                {/* Dept turnover table */}
+                <ChartCard title="Turnover by Department" subtitle="Exits and rate per department">
+                  {turnoverData.by_department.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-100 dark:border-slate-800">
+                            {["Department","Exits","Positions","Rate"].map(h => (
+                              <th key={h} className="py-2 px-2 text-left font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {turnoverData.by_department.map((d: any, i: number) => (
+                            <tr key={d.department} className={i === 0 ? "bg-rose-50 dark:bg-rose-950/20" : ""}>
+                              <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 max-w-[100px] truncate">
+                                {i === 0 && <span className="mr-1">⚠️</span>}{d.department}
+                              </td>
+                              <td className="py-2 px-2 text-center font-bold text-rose-600 dark:text-rose-400">{d.exits}</td>
+                              <td className="py-2 px-2 text-center text-slate-500">{d.positions}</td>
+                              <td className="py-2 px-2 text-center">
+                                <span className={`font-bold ${
+                                  d.rate >= 20 ? "text-rose-600 dark:text-rose-400" :
+                                  d.rate >= 10 ? "text-amber-600 dark:text-amber-400" :
+                                  "text-emerald-600 dark:text-emerald-400"
+                                }`}>{d.rate}%</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="py-8 text-center text-sm text-slate-400">No exits recorded this year.</p>
+                  )}
+                </ChartCard>
+              </div>
+
+              {/* Monthly exit trend */}
+              <ChartCard title="Monthly Exit Trend" subtitle={`Exits by month · ${turnoverData.year} · Breakdown by reason`}>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={turnoverData.monthly.filter((m: any) => m.exits > 0)}
+                    margin={{ top: 4, right: 24, left: -10, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
+                      className="dark:[&>line]:stroke-slate-700" />
+                    <XAxis dataKey="month_label" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                    <Bar dataKey="resignations"    name="Resignation"     fill={COLORS.amber}   stackId="a" radius={[0,0,0,0]} />
+                    <Bar dataKey="terminations"    name="Termination"     fill={COLORS.rose}    stackId="a" radius={[0,0,0,0]} />
+                    <Bar dataKey="end_of_contract" name="End of Contract" fill={COLORS.slate}   stackId="a" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                {/* Monthly insight */}
+                {(() => {
+                  const peakMonth = [...turnoverData.monthly].sort((a: any, b: any) => b.exits - a.exits)[0];
+                  if (peakMonth?.exits === 0) return null;
+                  return (
+                    <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">📊 Monthly Insight</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Peak exits occurred in <strong>{peakMonth.month_label}</strong> with {peakMonth.exits} departure{peakMonth.exits !== 1 ? "s" : ""}.
+                        {peakMonth.resignations > peakMonth.terminations
+                          ? " Voluntary resignations dominated — consider exit interviews to understand push factors."
+                          : " Terminations dominated — review performance management and hiring quality for this period."}
+                        {turnoverData.yoy_change > 10 && " Year-over-year exits have increased significantly — immediate retention initiatives are recommended."}
+                        {turnoverData.yoy_change <= 0 && " Compared to last year, turnover is trending positively."}
+                      </p>
+                    </div>
+                  );
+                })()}
+              </ChartCard>
             </>
           )}
 

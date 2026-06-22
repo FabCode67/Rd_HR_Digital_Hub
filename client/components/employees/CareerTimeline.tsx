@@ -157,10 +157,14 @@ function CertificateUploader({ recordId, token, existingUrl, onUploaded }: {
   const ref = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const isPdf = existingUrl?.toLowerCase().includes(".pdf") ||
+                existingUrl?.toLowerCase().includes("/raw/") ||
+                existingUrl?.toLowerCase().includes("application/pdf");
 
   const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { setError("File must be under 10 MB"); return; }
     setUploading(true); setError("");
     try {
       const res = await apiClient.education.uploadCertificate(recordId, file, token);
@@ -174,20 +178,58 @@ function CertificateUploader({ recordId, token, existingUrl, onUploaded }: {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-2">
+    <div className="mt-3 space-y-2">
       {existingUrl && (
-        <a href={existingUrl} target="_blank" rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors">
-          <FileText className="h-3 w-3" /> View Certificate <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg",
+                isPdf ? "bg-red-100 dark:bg-red-950/40" : "bg-emerald-100 dark:bg-emerald-950/40"
+              )}>
+                <FileText className={cn("h-4 w-4", isPdf ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {isPdf ? "PDF Certificate" : "Certificate Image"}
+                </p>
+                <p className="text-[10px] text-slate-400">Uploaded to secure storage</p>
+              </div>
+            </div>
+            <a href={existingUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors">
+              <ExternalLink className="h-3 w-3" /> Open
+            </a>
+          </div>
+          {/* PDF preview frame */}
+          {isPdf ? (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
+                <FileText className="h-3 w-3 text-red-500" />
+                <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">PDF Document</span>
+              </div>
+              <iframe
+                src={`${existingUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                className="w-full h-48"
+                title="Certificate PDF"
+              />
+            </div>
+          ) : (
+            <img src={existingUrl} alt="Certificate" className="w-full rounded-lg object-contain max-h-40 border border-slate-200 dark:border-slate-700" />
+          )}
+        </div>
       )}
-      <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
-        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 transition-colors">
-        {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-        {existingUrl ? "Replace" : "Upload Certificate"}
-      </button>
-      {error && <span className="text-xs text-red-500">{error}</span>}
-      <input ref={ref} type="file" accept="image/*,.pdf" className="hidden" onChange={handle} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-cyan-400 hover:text-cyan-600 dark:hover:border-cyan-600 dark:hover:text-cyan-400 disabled:opacity-60 transition-colors">
+          {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+          {uploading ? "Uploading…" : existingUrl ? "Replace Certificate" : "Upload Certificate (PDF or Image)"}
+        </button>
+        {error && <span className="text-xs text-red-500 dark:text-red-400">{error}</span>}
+      </div>
+      <input ref={ref} type="file" accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="hidden" onChange={handle} />
     </div>
   );
 }
@@ -535,8 +577,8 @@ export default function CareerTimeline({
                                     {rec.is_current ? <span className="text-violet-600 dark:text-violet-400 font-medium">Present</span> : fmtDate(rec.end_date)}
                                   </div>
 
-                                  {/* Certificate */}
-                                  {token && !isAdmin && (
+                                  {/* Certificate uploader — both admin and staff can upload */}
+                                  {token && (
                                     <CertificateUploader
                                       recordId={rec.id}
                                       token={token}
@@ -546,7 +588,8 @@ export default function CareerTimeline({
                                       }}
                                     />
                                   )}
-                                  {isAdmin && rec.certificate_url && (
+                                  {/* Fallback view-only for admin without token */}
+                                  {!token && rec.certificate_url && (
                                     <a href={rec.certificate_url} target="_blank" rel="noopener noreferrer"
                                       className="mt-2 inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors">
                                       <FileText className="h-3 w-3" /> View Certificate <ExternalLink className="h-3 w-3" />

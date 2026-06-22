@@ -39,7 +39,40 @@ const leaveColor = (t: string) => LEAVE_TYPES.find(l => l.value === t)?.color ??
 const fmtDate    = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
-// ── Leave balance bar ──────────────────────────────────────────────────────────
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+// ── Month selector component ───────────────────────────────────────────────────
+function MonthSelector({ month, onChange }: { month: number | null; onChange: (m: number | null) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      <button
+        onClick={() => onChange(null)}
+        className={cn(
+          "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+          month === null
+            ? "bg-cyan-500 text-white"
+            : "border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-cyan-300 hover:text-cyan-600"
+        )}>
+        All
+      </button>
+      {MONTHS.map((m, i) => (
+        <button key={m}
+          onClick={() => onChange(i + 1)}
+          className={cn(
+            "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+            month === i + 1
+              ? "bg-cyan-500 text-white"
+              : "border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-cyan-300 hover:text-cyan-600"
+          )}>
+          {m.slice(0, 3)}
+        </button>
+      ))}
+    </div>
+  );
+}
 function LeaveBar({ used, total }: { used: number; total: number }) {
   const pct  = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
   const warn = pct >= 80;
@@ -239,6 +272,7 @@ export function EmployeeLeaveModal({ employeeId, employeeName, onClose }: {
   const [data, setData]             = useState<EmployeeLeaveData | null>(null);
   const [loading, setLoading]       = useState(true);
   const [year, setYear]             = useState(new Date().getFullYear());
+  const [month, setMonth]           = useState<number | null>(null);
   const [showGrant, setShowGrant]   = useState(false);
   const [cancelTarget, setCancelTarget] = useState<LeaveRecord | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -246,10 +280,10 @@ export function EmployeeLeaveModal({ employeeId, employeeName, onClose }: {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setData(await apiClient.leave.getEmployeeLeave(employeeId, year)); }
+    try { setData(await apiClient.leave.getEmployeeLeave(employeeId, year, month ?? undefined)); }
     catch (e: any) { toast.error("Load failed", e?.message); }
     finally { setLoading(false); }
-  }, [employeeId, year]);
+  }, [employeeId, year, month]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -293,6 +327,11 @@ export function EmployeeLeaveModal({ employeeId, employeeName, onClose }: {
               <X className="h-5 w-5" />
             </button>
           </div>
+        </div>
+
+        {/* Month filter strip */}
+        <div className="border-b border-slate-100 dark:border-slate-800 px-6 py-2.5 shrink-0 bg-slate-50 dark:bg-slate-900/50">
+          <MonthSelector month={month} onChange={setMonth} />
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
@@ -355,7 +394,9 @@ export function EmployeeLeaveModal({ employeeId, employeeName, onClose }: {
 
               {/* History */}
               <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Leave History (all years)</h3>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Leave History {month ? `— ${MONTHS[month-1]} ${year}` : `— All of ${year}`}
+                </h3>
                 {data.records.length === 0 ? (
                   <div className="rounded-xl border border-slate-200 dark:border-slate-700 py-8 text-center text-sm text-slate-400">
                     No leave records yet.
@@ -420,16 +461,17 @@ export default function LeaveManagement() {
   const [summary, setSummary]   = useState<any>(null);
   const [loading, setLoading]   = useState(true);
   const [year, setYear]         = useState(new Date().getFullYear());
+  const [month, setMonth]       = useState<number | null>(new Date().getMonth() + 1);
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setSummary(await apiClient.leave.getSummary(year)); }
+    try { setSummary(await apiClient.leave.getSummary(year, month ?? undefined)); }
     catch (e: any) { toast.error("Load failed", e?.message); }
     finally { setLoading(false); }
-  }, [year]);
+  }, [year, month]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -446,7 +488,7 @@ export default function LeaveManagement() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Leave Management</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Admin-managed — track all employee leave across every type
+            {month ? `${MONTHS[month-1]} ${year}` : `Full Year ${year}`} — Admin-managed leave tracking
           </p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
@@ -454,6 +496,54 @@ export default function LeaveManagement() {
           {[year-1, year, year+1].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
+
+      {/* Month selector */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Filter by Month</p>
+        <MonthSelector month={month} onChange={setMonth} />
+      </div>
+
+      {/* Monthly KPI strip */}
+      {summary && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              label: month ? `Days taken in ${MONTHS[month-1]}` : "Total days taken (year)",
+              value: summary.total_month_days ?? 0,
+              accent: "bg-cyan-500",
+              sub: month ? `Across all employees in ${MONTHS[month-1]}` : "All leave types combined",
+            },
+            {
+              label: "Currently on leave",
+              value: summary.on_leave_now ?? 0,
+              accent: "bg-amber-500",
+              sub: "Active leave records today",
+            },
+            {
+              label: "Total employees",
+              value: summary.employees?.length ?? 0,
+              accent: "bg-emerald-500",
+              sub: "Active staff tracked",
+            },
+            {
+              label: `Leave records${month ? ` in ${MONTHS[month-1]}` : ""}`,
+              value: (summary.employees ?? []).reduce((s: number, e: any) =>
+                s + (e.records?.filter((r: any) => r.status === "approved").length ?? 0), 0),
+              accent: "bg-violet-500",
+              sub: "Approved leave entries",
+            },
+          ].map(k => (
+            <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className={`h-1 w-full ${k.accent}`} />
+              <div className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 leading-snug">{k.label}</p>
+                <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{k.value}</p>
+                <p className="mt-1 text-xs text-slate-400">{k.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Policy legend */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
@@ -504,7 +594,7 @@ export default function LeaveManagement() {
             <table className="w-full divide-y divide-slate-100 dark:divide-slate-800 text-sm">
               <thead className="bg-slate-50 dark:bg-slate-950/40">
                 <tr>
-                  {["Employee","Contract","Annual Leave","Other Leaves","Action"].map(h => (
+                  {["Employee","Contract","Annual Leave",month ? `Days in ${MONTHS[month-1]}` : "Other Leaves","Action"].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -542,15 +632,32 @@ export default function LeaveManagement() {
                           : <LeaveBar used={used} total={total} />}
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {otherAllocs.length === 0
-                            ? <span className="text-xs text-slate-400">—</span>
-                            : otherAllocs.map((a: Allocation) => (
-                              <span key={a.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", leaveColor(a.leave_type))}>
-                                {leaveLabel(a.leave_type)}: {a.used_days}/{a.total_days}d
+                        {month ? (
+                          <div className="flex items-center gap-2">
+                            {emp.month_days_taken > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 px-2.5 py-1 text-xs font-bold text-cyan-700 dark:text-cyan-300">
+                                <CalendarDays className="h-3 w-3" /> {emp.month_days_taken} day{emp.month_days_taken !== 1 ? "s" : ""}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">No leave</span>
+                            )}
+                            {(emp.records ?? []).filter((r: LeaveRecord) => r.status === "approved").map((r: LeaveRecord) => (
+                              <span key={r.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", leaveColor(r.leave_type))}>
+                                {leaveLabel(r.leave_type)}
                               </span>
                             ))}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {otherAllocs.length === 0
+                              ? <span className="text-xs text-slate-400">—</span>
+                              : otherAllocs.map((a: Allocation) => (
+                                <span key={a.id} className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", leaveColor(a.leave_type))}>
+                                  {leaveLabel(a.leave_type)}: {a.used_days}/{a.total_days}d
+                                </span>
+                              ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-5 py-3">
                         <button

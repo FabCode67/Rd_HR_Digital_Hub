@@ -36,6 +36,12 @@ export function subtreeWidth(node: PositionTreeNode, expandedIds: Set<string>): 
   return Math.max(CARD_W, total);
 }
 
+// ── Band options ─────────────────────────────────────────────────────────────
+const BANDS = [
+  "B1","B2","B3","B4","B5","B6","B7","B8","B9","B10",
+  "DSA","GT","Intern",
+];
+
 // ── PositionNode ───────────────────────────────────────────────────────────────
 interface Props {
   node: PositionTreeNode;
@@ -338,9 +344,11 @@ export default function PositionNode({ node, level = 0, onPositionUpdated, depar
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Band</label>
                     <div className="flex gap-2">
-                      <input value={newBand} onChange={e => setNewBand(e.target.value)}
-                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-sky-400 dark:text-slate-100"
-                        placeholder="e.g., A1, B2" />
+                      <select value={newBand} onChange={e => setNewBand(e.target.value)}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2 text-sm outline-none focus:border-sky-400 dark:text-slate-100">
+                        <option value="">— None —</option>
+                        {BANDS.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
                       <button onClick={updateBand} disabled={saving || newBand === (node.band || "")}
                         className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update"}

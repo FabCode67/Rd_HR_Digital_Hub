@@ -601,13 +601,19 @@ export const functionsAPI = {
 };
 
 export const leaveAPI = {
-  async getSummary(year?: number): Promise<any> {
-    const q = year ? `?year=${year}` : "";
-    return fetchAPI<any>(`${API_PREFIX}/leave/summary${q}`);
+  async getSummary(year?: number, month?: number): Promise<any> {
+    const q = new URLSearchParams();
+    if (year)  q.set("year",  String(year));
+    if (month) q.set("month", String(month));
+    const qs = q.toString() ? `?${q}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/leave/summary${qs}`);
   },
-  async getEmployeeLeave(employeeId: string, year?: number): Promise<any> {
-    const q = year ? `?year=${year}` : "";
-    return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}${q}`);
+  async getEmployeeLeave(employeeId: string, year?: number, month?: number): Promise<any> {
+    const q = new URLSearchParams();
+    if (year)  q.set("year",  String(year));
+    if (month) q.set("month", String(month));
+    const qs = q.toString() ? `?${q}` : "";
+    return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}${qs}`);
   },
   async grantLeave(employeeId: string, payload: {
     leave_type: string; start_date: string; end_date: string;
@@ -695,6 +701,10 @@ export const apiClient = {
       if (params?.exit_type)   q.set("exit_type",   params.exit_type);
       const qs = q.toString() ? `?${q}` : "";
       return fetchAPI<any>(`${API_PREFIX}/exits${qs}`);
+    },
+    async getTurnover(year?: number): Promise<any> {
+      const q = year ? `?year=${year}` : "";
+      return fetchAPI<any>(`${API_PREFIX}/exits/turnover${q}`);
     },
     async getEmployee(employeeId: string): Promise<any> {
       return fetchAPI<any>(`${API_PREFIX}/exits/employee/${employeeId}`);

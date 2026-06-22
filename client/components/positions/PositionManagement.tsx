@@ -33,6 +33,11 @@ const LEVEL_COLORS: Record<string, string> = {
   Intern:               "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 
+const BANDS = [
+  "B1","B2","B3","B4","B5","B6","B7","B8","B9","B10",
+  "DSA","GT","Intern",
+];
+
 const emptyForm: FormState = { title: "", description: "", department_id: "", parent_position_id: "", level: "Officer", band: "", is_active: true };
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) {
@@ -279,7 +284,10 @@ export default function PositionManagement() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Band</label>
-                  <input value={form.band} onChange={e => setForm(f => ({ ...f, band: e.target.value }))} className="field" placeholder="e.g. A1, B2" />
+                  <select value={form.band} onChange={e => setForm(f => ({ ...f, band: e.target.value }))} className="field">
+                    <option value="">— None —</option>
+                    {BANDS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Parent Position</label>

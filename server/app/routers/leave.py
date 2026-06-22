@@ -139,11 +139,12 @@ class UpdateAllocationRequest(BaseModel):
 
 @router.get("/summary")
 def get_summary(
-    year: int = Query(default=None),
+    year:  int = Query(default=None),
+    month: int = Query(default=None),   # 1-12; None = full year
     db: Session = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    """All active employees' leave status for a given year."""
+    """All active employees' leave status for a given year (optionally filtered by month)."""
     y = year or datetime.utcnow().year
     employees = db.query(Employee).filter(Employee.status == "ACTIVE").all()
     result = []
@@ -152,6 +153,22 @@ def get_summary(
             LeaveAllocation.employee_id == emp.id,
             LeaveAllocation.year == y,
         ).all()
+
+        # Records — filter by month if provided
+        rq = db.query(LeaveRecord).filter(
+            LeaveRecord.employee_id == emp.id,
+        )
+        if month:
+            from sqlalchemy import extract
+            rq = rq.filter(
+                extract("year",  LeaveRecord.start_date) == y,
+                extract("month", LeaveRecord.start_date) == month,
+            )
+        records = rq.order_by(LeaveRecord.start_date.desc()).all()
+
+        # Monthly stats
+        month_days = sum(r.days_taken for r in records if r.status == "approved")
+
         result.append({
             "employee_id":        str(emp.id),
             "employee_name":      emp.full_name,
@@ -159,14 +176,36 @@ def get_summary(
             "employment_type":    emp.employment_type,
             "annual_entitlement": _annual_entitlement(emp, db),
             "allocations":        [_fmt_alloc(a) for a in allocs],
+            "records":            [_fmt_record(r) for r in records],
+            "month_days_taken":   month_days,
         })
-    return {"year": y, "employees": result}
+
+    # Aggregate monthly stats across all employees
+    total_month_days = sum(e["month_days_taken"] for e in result)
+    on_leave_now = sum(
+        1 for e in result
+        if any(
+            r["status"] == "approved" and
+            (r["start_date"] or "") <= datetime.utcnow().isoformat() <=
+            (r["end_date"]   or "")
+            for r in e["records"]
+        )
+    )
+
+    return {
+        "year":              y,
+        "month":             month,
+        "employees":         result,
+        "total_month_days":  total_month_days,
+        "on_leave_now":      on_leave_now,
+    }
 
 
 @router.get("/employee/{employee_id}")
 def get_employee_leave(
     employee_id: UUID,
-    year: int = Query(default=None),
+    year:  int = Query(default=None),
+    month: int = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -179,22 +218,27 @@ def get_employee_leave(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    allocs  = db.query(LeaveAllocation).filter(
+    allocs = db.query(LeaveAllocation).filter(
         LeaveAllocation.employee_id == employee_id,
         LeaveAllocation.year == y,
     ).all()
-    records = (
-        db.query(LeaveRecord)
-        .filter(LeaveRecord.employee_id == employee_id)
-        .order_by(LeaveRecord.start_date.desc())
-        .all()
-    )
+
+    rq = db.query(LeaveRecord).filter(LeaveRecord.employee_id == employee_id)
+    if month:
+        from sqlalchemy import extract
+        rq = rq.filter(
+            extract("year",  LeaveRecord.start_date) == y,
+            extract("month", LeaveRecord.start_date) == month,
+        )
+    records = rq.order_by(LeaveRecord.start_date.desc()).all()
+
     return {
         "employee_id":        str(emp.id),
         "employee_name":      emp.full_name,
         "employment_type":    emp.employment_type,
         "annual_entitlement": _annual_entitlement(emp, db),
         "year":               y,
+        "month":              month,
         "allocations":        [_fmt_alloc(a) for a in allocs],
         "records":            [_fmt_record(r) for r in records],
     }
