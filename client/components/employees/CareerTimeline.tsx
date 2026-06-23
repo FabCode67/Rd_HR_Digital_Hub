@@ -72,7 +72,7 @@ function fmtDuration(days: number | null): string {
   return mo > 0 ? `${yr}yr ${mo}mo` : `${yr}yr`;
 }
 
-// ── Education form ─────────────────────────────────────────────────────────────
+// ── Education form (with inline certificate upload) ───────────────────────────
 
 const emptyEdu = {
   record_type: "degree", title: "", institution: "", description: "",
@@ -81,16 +81,28 @@ const emptyEdu = {
 
 function EducationForm({ initial, onSave, onCancel, saving }: {
   initial: typeof emptyEdu;
-  onSave: (data: typeof emptyEdu) => void;
+  onSave: (data: typeof emptyEdu, file?: File) => void;
   onCancel: () => void;
   saving: boolean;
 }) {
   const [form, setForm] = useState(initial);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { setFileError("File must be under 10 MB"); return; }
+    setFileError("");
+    setFile(f);
+  };
 
   return (
     <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/20 p-4 space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
+        {/* Type */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Type *</label>
           <select value={form.record_type} onChange={e => set("record_type", e.target.value)} className="field">
@@ -100,26 +112,38 @@ function EducationForm({ initial, onSave, onCancel, saving }: {
             <option value="course">Course</option>
           </select>
         </div>
+
+        {/* Title */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Title *</label>
           <input value={form.title} onChange={e => set("title", e.target.value)} className="field" placeholder="e.g. BSc Computer Science" />
         </div>
+
+        {/* Institution */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Institution</label>
           <input value={form.institution} onChange={e => set("institution", e.target.value)} className="field" placeholder="University / Organization" />
         </div>
+
+        {/* Grade */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Grade / Score</label>
           <input value={form.grade} onChange={e => set("grade", e.target.value)} className="field" placeholder="e.g. Distinction, A, 85%" />
         </div>
+
+        {/* Start date */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Start Date</label>
           <input type="date" value={form.start_date} onChange={e => set("start_date", e.target.value)} className="field" />
         </div>
+
+        {/* End date */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">End Date</label>
           <input type="date" value={form.end_date} onChange={e => set("end_date", e.target.value)} className="field" disabled={form.is_current} />
         </div>
+
+        {/* Ongoing checkbox */}
         <div className="sm:col-span-2">
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
             <input type="checkbox" checked={form.is_current} onChange={e => set("is_current", e.target.checked)}
@@ -127,20 +151,87 @@ function EducationForm({ initial, onSave, onCancel, saving }: {
             Currently ongoing
           </label>
         </div>
+
+        {/* Description */}
         <div className="sm:col-span-2">
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">Description</label>
           <textarea value={form.description} onChange={e => set("description", e.target.value)}
             className="field min-h-16" placeholder="Optional — key learnings, modules, etc." />
         </div>
+
+        {/* ── Certificate upload ─────────────────────────────────────────── */}
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+            Certificate <span className="normal-case font-normal text-slate-400">(PDF or image · optional)</span>
+          </label>
+
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3 text-left transition-colors",
+              file
+                ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/20"
+                : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-cyan-400 hover:bg-cyan-50/60 dark:hover:border-cyan-600 dark:hover:bg-cyan-950/20"
+            )}
+          >
+            {file ? (
+              <>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-950/40">
+                  <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 truncate">{file.name}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{(file.size / 1024).toFixed(0)} KB · will upload when you save</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); setFile(null); if (fileRef.current) fileRef.current.value = ""; }}
+                  className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700">
+                  <Upload className="h-4 w-4 text-slate-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Click to attach certificate</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">PDF, JPG or PNG · max 10 MB</p>
+                </div>
+              </>
+            )}
+          </button>
+
+          {fileError && <p className="mt-1 text-xs text-red-500 dark:text-red-400">{fileError}</p>}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleFile}
+          />
+        </div>
       </div>
+
+      {/* Actions */}
       <div className="flex gap-2 pt-1">
-        <button type="button" onClick={() => onSave(form)} disabled={saving || !form.title.trim()}
-          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors">
+        <button
+          type="button"
+          onClick={() => onSave(form, file ?? undefined)}
+          disabled={saving || !form.title.trim()}
+          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-60 transition-colors"
+        >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save
+          {file ? "Save & Upload" : "Save"}
         </button>
-        <button type="button" onClick={onCancel}
-          className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
           Cancel
         </button>
       </div>
@@ -148,7 +239,7 @@ function EducationForm({ initial, onSave, onCancel, saving }: {
   );
 }
 
-// ── Certificate uploader ───────────────────────────────────────────────────────
+// ── Certificate uploader (for existing records) ───────────────────────────────
 
 function CertificateUploader({ recordId, token, existingUrl, onUploaded }: {
   recordId: string; token: string; existingUrl: string | null;
@@ -201,35 +292,28 @@ function CertificateUploader({ recordId, token, existingUrl, onUploaded }: {
               <ExternalLink className="h-3 w-3" /> Open
             </a>
           </div>
-          {/* PDF preview frame */}
           {isPdf ? (
             <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
               <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
                 <FileText className="h-3 w-3 text-red-500" />
                 <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">PDF Document</span>
               </div>
-              <iframe
-                src={`${existingUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                className="w-full h-48"
-                title="Certificate PDF"
-              />
+              <iframe src={`${existingUrl}#toolbar=0&navpanes=0&scrollbar=0`} className="w-full h-48" title="Certificate PDF" />
             </div>
           ) : (
             <img src={existingUrl} alt="Certificate" className="w-full rounded-lg object-contain max-h-40 border border-slate-200 dark:border-slate-700" />
           )}
         </div>
       )}
-
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
           className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-cyan-400 hover:text-cyan-600 dark:hover:border-cyan-600 dark:hover:text-cyan-400 disabled:opacity-60 transition-colors">
           {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-          {uploading ? "Uploading…" : existingUrl ? "Replace Certificate" : "Upload Certificate (PDF or Image)"}
+          {uploading ? "Uploading…" : existingUrl ? "Replace Certificate" : "Upload Certificate"}
         </button>
         {error && <span className="text-xs text-red-500 dark:text-red-400">{error}</span>}
       </div>
-      <input ref={ref} type="file" accept="application/pdf,image/jpeg,image/png,image/webp"
-        className="hidden" onChange={handle} />
+      <input ref={ref} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={handle} />
     </div>
   );
 }
@@ -241,7 +325,7 @@ interface CareerTimelineProps {
   employeeName: string;
   profileImageUrl?: string | null;
   isAdmin?: boolean;
-  isSelf?: boolean;        // true when staff views their OWN career
+  isSelf?: boolean;
   token?: string | null;
   onClose?: () => void;
 }
@@ -258,7 +342,6 @@ export default function CareerTimeline({
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
 
-  // Education CRUD state
   const [adding, setAdding]     = useState(false);
   const [editId, setEditId]     = useState<string | null>(null);
   const [saving, setSaving]     = useState(false);
@@ -271,11 +354,7 @@ export default function CareerTimeline({
     try {
       const [pos, edu] = await Promise.all([
         apiClient.employee.getCareerTimeline(employeeId),
-        // Staff viewing their own: use /me endpoint (no ID comparison on server)
-        // Admin or staff viewing others: use /employee/{id} endpoint
-        isSelf
-          ? apiClient.education.getMyRecords()
-          : apiClient.education.getRecords(employeeId),
+        isSelf ? apiClient.education.getMyRecords() : apiClient.education.getRecords(employeeId),
       ]);
       setPosData(pos);
       setEduData(edu);
@@ -288,24 +367,38 @@ export default function CareerTimeline({
 
   useEffect(() => { void load(); }, [employeeId]);
 
-  const saveEdu = async (data: typeof emptyEdu, id?: string) => {
+  const saveEdu = async (data: typeof emptyEdu, file?: File, id?: string) => {
     setSaving(true);
     try {
       const payload = {
         ...data,
-        start_date: data.start_date ? new Date(data.start_date).toISOString() : null,
-        end_date: data.end_date && !data.is_current ? new Date(data.end_date).toISOString() : null,
-        institution: data.institution || null,
+        start_date:  data.start_date ? new Date(data.start_date).toISOString() : null,
+        end_date:    data.end_date && !data.is_current ? new Date(data.end_date).toISOString() : null,
+        institution: data.institution  || null,
         description: data.description || null,
-        grade: data.grade || null,
+        grade:       data.grade       || null,
       };
+
+      let recordId = id;
       if (id) {
         await apiClient.education.update(id, payload);
       } else if (isSelf) {
-        await apiClient.education.createMyRecord(payload);
+        const created = await apiClient.education.createMyRecord(payload);
+        recordId = created.id;
       } else {
-        await apiClient.education.create(employeeId, payload);
+        const created = await apiClient.education.create(employeeId, payload);
+        recordId = created.id;
       }
+
+      // Auto-upload certificate if one was attached in the form
+      if (file && recordId && token) {
+        try {
+          await apiClient.education.uploadCertificate(recordId, file, token);
+        } catch (e: any) {
+          setError(`Saved but certificate upload failed: ${e?.message}`);
+        }
+      }
+
       setAdding(false); setEditId(null);
       await load();
     } catch (e: any) {
@@ -327,24 +420,18 @@ export default function CareerTimeline({
     }
   };
 
-  // ── Inner content ──────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   const content = (
-    <div className={cn(
-      "flex flex-col",
-      onClose ? "h-full" : "min-h-0"
-    )}>
+    <div className={cn("flex flex-col", onClose ? "h-full" : "min-h-0")}>
+
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 shrink-0 rounded-full overflow-hidden">
-            {profileImageUrl ? (
-              <img src={profileImageUrl} alt={employeeName} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-white">
-                {initials}
-              </div>
-            )}
+            {profileImageUrl
+              ? <img src={profileImageUrl} alt={employeeName} className="h-full w-full object-cover" />
+              : <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 text-sm font-bold text-white">{initials}</div>}
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">{employeeName}</h2>
@@ -354,8 +441,7 @@ export default function CareerTimeline({
           </div>
         </div>
         {onClose && (
-          <button onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <X className="h-5 w-5" />
           </button>
         )}
@@ -371,11 +457,9 @@ export default function CareerTimeline({
                 ? "border-cyan-500 text-cyan-600 dark:text-cyan-400"
                 : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
             )}>
-            {t === "positions" ? (
-              <span className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5" /> Position History</span>
-            ) : (
-              <span className="flex items-center gap-1.5"><GraduationCap className="h-3.5 w-3.5" /> Education & Training</span>
-            )}
+            {t === "positions"
+              ? <span className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5" /> Position History</span>
+              : <span className="flex items-center gap-1.5"><GraduationCap className="h-3.5 w-3.5" /> Education & Training</span>}
           </button>
         ))}
       </div>
@@ -390,7 +474,7 @@ export default function CareerTimeline({
           <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/30 px-4 py-3 text-sm text-red-600 dark:text-red-400">{error}</div>
         ) : tab === "positions" ? (
 
-          /* ── Position History tab ── */
+          /* Position History */
           posData?.timeline?.length ? (
             <div className="relative">
               <div className="absolute left-5 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-700" />
@@ -472,9 +556,8 @@ export default function CareerTimeline({
 
         ) : (
 
-          /* ── Education & Training tab ── */
+          /* Education & Training */
           <div className="space-y-4">
-            {/* Add button — staff and admin can add */}
             {!adding && (
               <button onClick={() => setAdding(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-cyan-400 hover:text-cyan-600 dark:hover:border-cyan-600 dark:hover:text-cyan-400 transition-colors w-full justify-center">
@@ -482,22 +565,20 @@ export default function CareerTimeline({
               </button>
             )}
 
-            {/* Add form */}
             {adding && (
               <EducationForm
                 initial={{ ...emptyEdu }}
-                onSave={data => void saveEdu(data)}
+                onSave={(data, file) => void saveEdu(data, file)}
                 onCancel={() => setAdding(false)}
                 saving={saving}
               />
             )}
 
-            {/* Records list */}
             {eduData.length === 0 && !adding ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <GraduationCap className="h-10 w-10 text-slate-300 dark:text-slate-600 mb-3" />
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No education records yet</p>
-                <p className="text-xs text-slate-400 mt-1">Add your degrees, certifications and training courses.</p>
+                <p className="text-xs text-slate-400 mt-1">Add degrees, certifications and training courses.</p>
               </div>
             ) : (
               <div className="relative">
@@ -509,7 +590,6 @@ export default function CareerTimeline({
                     const isEditing = editId === rec.id;
                     return (
                       <div key={rec.id} className="relative flex gap-5 pb-6 last:pb-0">
-                        {/* Node */}
                         <div className="relative z-10 shrink-0">
                           <div className={cn(
                             "flex h-10 w-10 items-center justify-center rounded-full border-2 shadow-sm bg-white dark:bg-slate-800",
@@ -519,7 +599,6 @@ export default function CareerTimeline({
                           </div>
                         </div>
 
-                        {/* Card */}
                         <div className="flex-1">
                           {isEditing ? (
                             <EducationForm
@@ -529,11 +608,11 @@ export default function CareerTimeline({
                                 institution: rec.institution ?? "",
                                 description: rec.description ?? "",
                                 start_date: rec.start_date ? rec.start_date.slice(0, 10) : "",
-                                end_date: rec.end_date ? rec.end_date.slice(0, 10) : "",
+                                end_date:   rec.end_date   ? rec.end_date.slice(0, 10)   : "",
                                 is_current: rec.is_current,
                                 grade: rec.grade ?? "",
                               }}
-                              onSave={data => void saveEdu(data, rec.id)}
+                              onSave={(data, file) => void saveEdu(data, file, rec.id)}
                               onCancel={() => setEditId(null)}
                               saving={saving}
                             />
@@ -574,10 +653,12 @@ export default function CareerTimeline({
                                     <Calendar className="h-3 w-3 shrink-0" />
                                     {fmtDate(rec.start_date)}
                                     <span>→</span>
-                                    {rec.is_current ? <span className="text-violet-600 dark:text-violet-400 font-medium">Present</span> : fmtDate(rec.end_date)}
+                                    {rec.is_current
+                                      ? <span className="text-violet-600 dark:text-violet-400 font-medium">Present</span>
+                                      : fmtDate(rec.end_date)}
                                   </div>
 
-                                  {/* Certificate uploader — both admin and staff can upload */}
+                                  {/* Certificate uploader on existing record */}
                                   {token && (
                                     <CertificateUploader
                                       recordId={rec.id}
@@ -588,7 +669,6 @@ export default function CareerTimeline({
                                       }}
                                     />
                                   )}
-                                  {/* Fallback view-only for admin without token */}
                                   {!token && rec.certificate_url && (
                                     <a href={rec.certificate_url} target="_blank" rel="noopener noreferrer"
                                       className="mt-2 inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors">
@@ -597,7 +677,6 @@ export default function CareerTimeline({
                                   )}
                                 </div>
 
-                                {/* Actions — not admin-only: staff can edit/delete own */}
                                 <div className="flex gap-1.5 shrink-0">
                                   <button onClick={() => setEditId(rec.id)}
                                     className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
@@ -648,7 +727,6 @@ export default function CareerTimeline({
     </div>
   );
 
-  // Render as modal or inline
   if (onClose) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>

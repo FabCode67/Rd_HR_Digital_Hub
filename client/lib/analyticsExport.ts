@@ -23,6 +23,7 @@ export interface SectionConfig {
   leave:       { enabled: boolean; from: string; to: string };
   performance: { enabled: boolean; from: string; to: string };
   exits:       { enabled: boolean; from: string; to: string };
+  turnover:    { enabled: boolean; from: string; to: string };
 }
 
 export interface AnalyticsData {
@@ -31,6 +32,7 @@ export interface AnalyticsData {
   employees:      any[];
   leaveSummary:   any;
   performanceSummary?: any;
+  turnoverData?:  any;
   metrics: {
     filled: number; vacant: number; fillRate: number;
     active: number; inactive: number; suspended: number; terminated: number;
@@ -392,6 +394,58 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
     s.addTable([hRow, ...dRows], { x, y, w, rowH: 0.22, colW: headers.map(() => w / headers.length) });
   }
 
+  // ── Pie chart (proportional stacked squares + legend) ────────────────────
+  // pptxgenjs has no native pie — we draw a segmented rectangle as a pie proxy,
+  // plus a clean legend with percentages.
+  function drawPie(
+    s: any,
+    slices: { label: string; value: number; color: string }[],
+    x: number, y: number, size: number,  // x/y = top-left of the pie square
+    legendX: number, legendY: number, legendW: number
+  ) {
+    const total = slices.filter(sl => sl.value > 0).reduce((a, b) => a + b.value, 0);
+    if (total === 0) return;
+    const active = slices.filter(sl => sl.value > 0);
+
+    // Draw segmented circle approximation using stacked horizontal arcs
+    // We tile the square with proportional colored segments top-to-bottom
+    let yOff = 0;
+    active.forEach((sl, _idx) => {
+      const segH = size * (sl.value / total);
+      if (segH < 0.01) return;
+      s.addShape(pptx.ShapeType.ellipse, {
+        x: x, y: y + yOff,
+        w: size, h: segH,
+        fill: { color: sl.color },
+        line: { color: sl.color, pt: 0 },
+      });
+      // Add % label inside large segments
+      const pct = Math.round((sl.value / total) * 100);
+      if (segH > 0.25) {
+        s.addText(`${pct}%`, {
+          x: x, y: y + yOff + segH / 2 - 0.1,
+          w: size, h: 0.22,
+          fontSize: pct > 15 ? 11 : 8,
+          bold: true, color: C.white, fontFace: "Arial", align: "center",
+        });
+      }
+      yOff += segH;
+    });
+
+    // Legend
+    active.forEach((sl, i) => {
+      const pct = Math.round((sl.value / total) * 100);
+      const ly  = legendY + i * 0.35;
+      s.addShape(pptx.ShapeType.ellipse, {
+        x: legendX, y: ly + 0.04, w: 0.18, h: 0.18, fill: { color: sl.color },
+      });
+      s.addText(`${sl.label}: ${sl.value} (${pct}%)`, {
+        x: legendX + 0.24, y: ly, w: legendW, h: 0.28,
+        fontSize: 8.5, color: C.navy, fontFace: "Arial",
+      });
+    });
+  }
+
   // ── SLIDE 1: Cover ─────────────────────────────────────────────────────────
   {
     const s = pptx.addSlide();
@@ -468,20 +522,27 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
       if (fW > 0.5) s.addText(`♀ Female ${Math.round(genderFemale/total*100)}%`, { x: 0.22 + mW + 0.05, y: barY + 0.12, w: fW - 0.15, h: 0.3, fontSize: 11, bold: true, color: C.white, fontFace: "Arial" });
     }
 
-    // Gender by employment type bars
-    s.addText("Gender by Contract Type", { x: 0.22, y: 3.35, w: 6, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial" });
+    // Gender by employment type bars (left half)
+    s.addText("Gender by Contract Type", { x: 0.22, y: 3.35, w: 6.5, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial" });
     const permMale   = employees.filter((e:any) => e.employment_type === "permanent" && e.gender === "male").length;
     const permFemale = employees.filter((e:any) => e.employment_type === "permanent" && e.gender === "female").length;
     const tempMale   = employees.filter((e:any) => e.employment_type === "temporary"  && e.gender === "male").length;
     const tempFemale = employees.filter((e:any) => e.employment_type === "temporary"  && e.gender === "female").length;
-
     const contractRows = [
       { name: "Perm. Male",   value: permMale,   color: C.blue   },
       { name: "Perm. Female", value: permFemale, color: C.pink   },
       { name: "Temp. Male",   value: tempMale,   color: "93C5FD" },
       { name: "Temp. Female", value: tempFemale, color: "F9A8D4" },
     ];
-    vBar(s, contractRows, 0.22, 3.7, W * 0.55, 2.5, C.cyan);
+    vBar(s, contractRows, 0.22, 3.7, 6.5, 2.3, C.cyan);
+
+    // Gender pie chart (right half)
+    s.addText("Gender Split", { x: 7.5, y: 3.35, w: 5.5, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+    drawPie(s, [
+      { label: "Male",          value: genderMale,   color: C.blue },
+      { label: "Female",        value: genderFemale, color: C.pink },
+      { label: "Not Specified", value: genderNone,   color: C.mid  },
+    ], 8.3, 3.75, 2.2, 7.6, 4.2, 4.8);
 
     interpretation(s, interpret("gender", { male: genderMale, female: genderFemale, none: genderNone }));
   }
@@ -615,14 +676,24 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
       xOff += rW;
     });
 
-    // Leave per employee table
-    const leaveTable = (data.leaveSummary?.employees ?? []).slice(0, 12).map((e: any) => {
+    // Leave per employee table (left 60%)
+    const leaveTable = (data.leaveSummary?.employees ?? []).slice(0, 10).map((e: any) => {
       const an = e.allocations?.find((a: any) => a.leave_type === "annual");
       return [e.employee_name, e.employment_type ?? "—", String(e.annual_entitlement), String(an?.used_days ?? 0), String(an?.remaining ?? e.annual_entitlement)];
     });
     if (leaveTable.length > 0) {
-      addTable(s, 0.22, 3.3, W - 0.44, ["Employee","Contract","Entitlement","Used","Remaining"], leaveTable, 12);
+      addTable(s, 0.22, 3.3, 7.5, ["Employee","Contract","Entitlement","Used","Remaining"], leaveTable, 10);
     }
+
+    // Leave type pie chart (right 35%)
+    s.addText("Leave Type Split", { x: 8.0, y: 3.25, w: 5.0, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+    drawPie(s, [
+      { label: "Annual",        value: leaveTotals.annual,        color: C.cyan   },
+      { label: "Sick",          value: leaveTotals.sick,          color: C.amber  },
+      { label: "Maternity",     value: leaveTotals.maternity,     color: C.pink   },
+      { label: "Paternity",     value: leaveTotals.paternity,     color: C.blue   },
+      { label: "Compassionate", value: leaveTotals.compassionate, color: C.violet },
+    ], 8.9, 3.65, 1.8, 7.9, 3.85, 4.8);
 
     interpretation(s, interpret("leave_types", leaveTotals));
   }
@@ -688,7 +759,6 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
   // ── SLIDE 10: Organisational Structure Summary ─────────────────────────────
   if (sections.departments.enabled) {
     const s = addSlide("Organisational Structure", "Departments, hierarchy and position summary");
-
     addTable(s, 0.22, 1.2, W - 0.44,
       ["Department", "Parent", "Filled", "Vacant", "Total", "Fill Rate"],
       m.deptBar.map(d => [
@@ -700,12 +770,101 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
         d.Filled, d.Vacant, d.Filled + d.Vacant,
         `${Math.round(d.Filled / Math.max(d.Filled + d.Vacant, 1) * 100)}%`,
       ]), 18);
-
     const topDept = [...m.deptBar].sort((a, b) => (b.Filled + b.Vacant) - (a.Filled + a.Vacant))[0];
     const intText = topDept
       ? `${topDept.name} is the largest department with ${topDept.Filled + topDept.Vacant} positions (${topDept.Filled} filled, ${topDept.Vacant} vacant). Overall organisation fill rate is ${m.fillRate.toFixed(0)}% — ${m.fillRate >= 85 ? "indicating a well-staffed organisation" : "suggesting active recruitment is needed to reach optimal capacity"}.`
       : "No department data available.";
     interpretation(s, intText);
+  }
+
+  // ── SLIDE T: Turnover & Retention Analysis ─────────────────────────────────
+  if (sections.turnover?.enabled && data.turnoverData) {
+    const td = data.turnoverData;
+    const s  = addSlide("Turnover & Retention Analysis", `Workforce attrition · ${td.year} · Industry avg turnover 10–15%`);
+
+    // ─ Row 1: 5 KPI boxes ─
+    const kpis = [
+      { label: "Turnover Rate",    value: `${td.turnover_rate}%`,  accent: td.turnover_rate > 15 ? C.red : td.turnover_rate > 8 ? C.amber : C.green,
+        sub: td.turnover_rate <= 10 ? "✅ Healthy" : td.turnover_rate <= 20 ? "⚠️ Moderate" : "🔴 High" },
+      { label: "Retention Rate",   value: `${td.retention_rate}%`, accent: td.retention_rate >= 90 ? C.green : td.retention_rate >= 80 ? C.amber : C.red,
+        sub: `${td.active_now} employees retained` },
+      { label: "Voluntary Exits",  value: String(td.voluntary_exits),   accent: C.amber,   sub: `${td.voluntary_rate}% voluntary rate` },
+      { label: "Involuntary Exits",value: String(td.involuntary_exits),  accent: C.red,     sub: "Terminations + end of contract" },
+      { label: "vs Last Year",     value: td.prev_year_exits === 0 ? "New" : `${td.yoy_change > 0 ? "+" : ""}${td.yoy_change}%`,
+        accent: td.yoy_change <= 0 ? C.green : C.red,
+        sub: `${td.prev_year_exits} exits in ${td.year - 1}` },
+    ];
+    const kw = 2.4, kh = 1.1, kg = 0.1;
+    kpis.forEach((k, i) => metricBox(s, 0.22 + i * (kw + kg), 1.2, kw, kh, k.label, k.value, k.accent, k.sub));
+
+    // ─ Row 2 left: Retention gauge ring (drawn as concentric proportion) ─
+    s.addText("Retention Rate", { x: 0.22, y: 2.55, w: 4.5, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+    // Outer ring background
+    s.addShape(pptx.ShapeType.ellipse, { x: 0.62, y: 2.95, w: 3.7, h: 3.7,
+      fill: { color: C.light }, line: { color: C.light2, pt: 1 } });
+    // Inner circle cutout
+    s.addShape(pptx.ShapeType.ellipse, { x: 1.12, y: 3.45, w: 2.7, h: 2.7,
+      fill: { color: C.white }, line: { color: C.white, pt: 0 } });
+    // Filled arc approximation using proportion rect over the ring area
+    const retPct = Math.min(td.retention_rate, 100) / 100;
+    const ringColor = td.retention_rate >= 90 ? C.green : td.retention_rate >= 80 ? C.amber : C.red;
+    // Draw filled segment on top half as a coloured ellipse clipped by inner circle
+    s.addShape(pptx.ShapeType.ellipse, { x: 0.62, y: 2.95, w: 3.7, h: 3.7 * retPct,
+      fill: { color: ringColor }, line: { color: ringColor, pt: 0 } });
+    s.addShape(pptx.ShapeType.ellipse, { x: 1.12, y: 3.45, w: 2.7, h: 2.7,
+      fill: { color: C.white }, line: { color: C.white, pt: 0 } });
+    // Centre text
+    s.addText(`${td.retention_rate}%`, { x: 1.12, y: 4.5, w: 2.7, h: 0.55,
+      fontSize: 28, bold: true, color: ringColor, fontFace: "Arial", align: "center" });
+    s.addText("Retained", { x: 1.12, y: 5.05, w: 2.7, h: 0.3,
+      fontSize: 10, color: C.dark, fontFace: "Arial", align: "center" });
+
+    // ─ Row 2 centre: Exit composition pie ─
+    s.addText("Exit Composition", { x: 4.8, y: 2.55, w: 4.0, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+    drawPie(s, [
+      { label: "Voluntary (Resignation)",   value: td.voluntary_exits,   color: C.amber  },
+      { label: "Involuntary (Term/EOC)",    value: td.involuntary_exits, color: C.red    },
+    ], 5.2, 2.95, 2.0, 4.85, 5.15, 3.8);
+
+    // ─ Row 2 right: Monthly exit mini bar ─
+    s.addText("Monthly Exit Trend", { x: 9.1, y: 2.55, w: 4.0, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+    const monthlyWithExits = (td.monthly ?? []).filter((m: any) => m.exits > 0);
+    if (monthlyWithExits.length > 0) {
+      const maxExits = Math.max(...monthlyWithExits.map((m: any) => m.exits), 1);
+      const chartH = 2.8, chartY = 2.95, chartW = 3.8, chartX = 9.2;
+      const bw2 = (chartW / monthlyWithExits.length) * 0.65;
+      const bg2 = (chartW / monthlyWithExits.length) * 0.35;
+      monthlyWithExits.forEach((mo: any, i: number) => {
+        const bx  = chartX + i * (bw2 + bg2) + bg2 / 2;
+        const bh  = chartH * (mo.exits / maxExits);
+        s.addShape(pptx.ShapeType.rect, { x: bx, y: chartY + chartH - bh, w: bw2, h: bh,
+          fill: { color: mo.resignations >= mo.terminations ? C.amber : C.red } });
+        s.addText(String(mo.exits), { x: bx, y: chartY + chartH - bh - 0.2, w: bw2, h: 0.18,
+          fontSize: 7, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+        s.addText(mo.month_label, { x: bx - 0.05, y: chartY + chartH + 0.04, w: bw2 + 0.1, h: 0.25,
+          fontSize: 7, color: C.dark, fontFace: "Arial", align: "center" });
+      });
+    } else {
+      s.addText("No exits this year", { x: 9.1, y: 4.5, w: 4.0, h: 0.3,
+        fontSize: 10, color: C.dark, fontFace: "Arial", align: "center" });
+    }
+
+    // ─ Dept turnover table ─
+    if (td.by_department?.length > 0) {
+      addTable(s, 0.22, 6.25, 8.0,
+        ["Department", "Exits", "Positions", "Turnover Rate"],
+        td.by_department.slice(0, 4).map((d: any) => [
+          d.department, d.exits, d.positions, `${d.rate}%`
+        ]), 4);
+    }
+
+    // Interpretation
+    const retInsight = td.retention_rate >= 90
+      ? `Excellent retention at ${td.retention_rate}% — the workforce is highly stable. Turnover rate of ${td.turnover_rate}% is below industry average.`
+      : td.retention_rate >= 80
+      ? `Retention rate of ${td.retention_rate}% is acceptable but warrants monitoring. ${td.voluntary_exits} voluntary exits suggest reviewing engagement and compensation strategies.`
+      : `High turnover detected: ${td.turnover_rate}% rate with only ${td.retention_rate}% retention. Immediate HR intervention recommended to address compensation, management quality, and career development.`;
+    interpretation(s, retInsight + (td.yoy_change > 10 ? ` Year-over-year exits increased by ${td.yoy_change}% — escalating trend requiring urgent action.` : ""), 6.6);
   }
 
   // ── SLIDE 11: Closing ──────────────────────────────────────────────────────

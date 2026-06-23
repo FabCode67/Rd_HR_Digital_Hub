@@ -174,7 +174,7 @@ export default function AnalyticsDashboard() {
   const today = new Date().toISOString().slice(0,10);
   const yearStart = `${new Date().getFullYear()}-01-01`;
 
-  type SectionKey = "overview"|"employees"|"gender"|"departments"|"positions"|"leave"|"performance"|"exits";
+  type SectionKey = "overview"|"employees"|"gender"|"departments"|"positions"|"leave"|"performance"|"exits"|"turnover";
   type SectionCfg = { enabled: boolean; from: string; to: string };
 
   const [sections, setSections] = useState<Record<SectionKey, SectionCfg>>({
@@ -186,6 +186,7 @@ export default function AnalyticsDashboard() {
     leave:       { enabled: !!leaveSummary,        from: yearStart, to: today },
     performance: { enabled: !!performanceSummary,  from: yearStart, to: today },
     exits:       { enabled: !!exitSummary,         from: yearStart, to: today },
+    turnover:    { enabled: !!turnoverData,         from: yearStart, to: today },
   });
 
   const SECTION_META: Record<SectionKey, { label: string; desc: string; icon: string; color: string }> = {
@@ -197,6 +198,7 @@ export default function AnalyticsDashboard() {
     leave:       { label: "Leave Report",        desc: "Annual leave, sick, maternity — by employee",    icon: "🏖️", color: "text-cyan-600"    },
     performance: { label: "Performance Report",  desc: "Mid-year & end-year ratings, KPI goals",         icon: "⭐", color: "text-amber-600"   },
     exits:       { label: "Exit Report",         desc: "Departures by reason, type and department",      icon: "🚪", color: "text-rose-600"    },
+    turnover:    { label: "Turnover & Retention",  desc: "Turnover rate, retention gauge, monthly trend",  icon: "🔄", color: "text-indigo-600"  },
   };
 
   const toggleSection = (key: SectionKey) =>
@@ -493,8 +495,8 @@ export default function AnalyticsDashboard() {
 
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
-    departments, positions, employees, leaveSummary, performanceSummary, metrics: a,
-  }), [departments, positions, employees, leaveSummary, performanceSummary, a]);
+    departments, positions, employees, leaveSummary, performanceSummary, turnoverData, metrics: a,
+  }), [departments, positions, employees, leaveSummary, performanceSummary, turnoverData, a]);
 
   const handleExcel = useCallback(async () => {
     setExporting("excel"); setShowExportBuilder(false);
