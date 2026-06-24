@@ -100,7 +100,8 @@ function EducationForm({ initial, onSave, onCancel, saving }: {
   };
 
   return (
-    <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/20 p-4 space-y-3">
+    <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/20 flex flex-col">
+      <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: "55vh" }}>
       <div className="grid gap-3 sm:grid-cols-2">
         {/* Type */}
         <div>
@@ -215,9 +216,10 @@ function EducationForm({ initial, onSave, onCancel, saving }: {
           />
         </div>
       </div>
+      </div> {/* end scrollable area */}
 
-      {/* Actions */}
-      <div className="flex gap-2 pt-1">
+      {/* Actions — always visible outside scroll */}
+      <div className="flex gap-2 px-4 pb-4 pt-2 border-t border-cyan-100 dark:border-cyan-900/40">
         <button
           type="button"
           onClick={() => onSave(form, file ?? undefined)}

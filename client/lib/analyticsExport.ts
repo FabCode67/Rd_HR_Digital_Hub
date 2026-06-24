@@ -617,32 +617,38 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
     interpretation(s, interpret("contract_split", { permanent, temporary }));
   }
 
-  // ── SLIDE 7: Leave by Department ──────────────────────────────────────────
+  // ── SLIDE 7: Leave by Department (only when real dept data exists) ─────────
   if (sections.leave.enabled) {
-    const s = addSlide("Leave Days by Department", "Total leave days taken per department · All leave types combined");
+    // Only include real rows — exclude "Unknown" which means department couldn't be resolved
+    const realDeptRows = leaveByDeptRows.filter(r => r.name !== "Unknown" && r.total_days > 0);
+    const totalLeaveAllDepts = Object.values(leaveTotals).reduce((a, b) => a + b, 0);
 
-    if (leaveByDeptRows.length > 0) {
-      hBar(s, leaveByDeptRows.map(r => ({ name: r.name, value: r.total_days })), 0.22, 1.2, W - 0.44, 4.5, C.violet);
-    } else {
-      // Fallback: show leave type totals
-      s.addText("Department-level leave breakdown requires position assignments.", {
-        x: 0.22, y: 2.0, w: W - 0.44, h: 0.4, fontSize: 11, color: C.dark, fontFace: "Arial", align: "center",
-      });
-      // Leave type breakdown instead
+    if (realDeptRows.length > 0) {
+      // Have real department data — show horizontal bar chart
+      const s = addSlide("Leave Days by Department", "Total leave days taken per department · All leave types combined");
+      hBar(s, realDeptRows.map(r => ({ name: r.name, value: r.total_days })), 0.22, 1.2, W - 0.44, 4.5, C.violet);
+      interpretation(s, interpret("leave_by_dept", { rows: realDeptRows }));
+    } else if (totalLeaveAllDepts > 0) {
+      // Have leave data but no dept mapping — show leave by type instead
+      const s = addSlide("Leave Utilisation by Type", "No department mapping available — showing leave breakdown by type");
       const leaveTypeRows = [
-        { name: "Annual",        value: leaveTotals.annual,        color: C.cyan    },
-        { name: "Sick",          value: leaveTotals.sick,          color: C.amber   },
-        { name: "Maternity",     value: leaveTotals.maternity,     color: C.pink    },
-        { name: "Paternity",     value: leaveTotals.paternity,     color: C.blue    },
-        { name: "Compassionate", value: leaveTotals.compassionate, color: C.violet  },
+        { name: "Annual",        value: leaveTotals.annual,        color: C.cyan   },
+        { name: "Sick",          value: leaveTotals.sick,          color: C.amber  },
+        { name: "Maternity",     value: leaveTotals.maternity,     color: C.pink   },
+        { name: "Paternity",     value: leaveTotals.paternity,     color: C.blue   },
+        { name: "Compassionate", value: leaveTotals.compassionate, color: C.violet },
       ].filter(r => r.value > 0);
-      if (leaveTypeRows.length > 0) vBar(s, leaveTypeRows, 1.5, 2.5, W - 3, 3.2, C.cyan);
+      if (leaveTypeRows.length > 0) {
+        vBar(s, leaveTypeRows, 1.5, 2.2, W - 3, 3.5, C.violet);
+      }
+      interpretation(s, `Total leave days taken: ${totalLeaveAllDepts}. Assign employees to positions to enable department-level leave tracking.`);
     }
-    interpretation(s, interpret("leave_by_dept", { rows: leaveByDeptRows.length > 0 ? leaveByDeptRows : [{ name: "N/A", total_days: 0 }] }));
+    // If no leave data at all — skip slide entirely (no empty/confusing chart)
   }
 
-  // ── SLIDE 8: Leave Types Analysis ─────────────────────────────────────────
-  if (sections.leave.enabled) {
+  // ── SLIDE 8: Leave Types Analysis (only when leave data exists) ────────────
+  const totalLeaveForSlide8 = Object.values(leaveTotals).reduce((a, b) => a + b, 0);
+  if (sections.leave.enabled && totalLeaveForSlide8 > 0) {
     const s = addSlide("Leave Utilisation Analysis", "Breakdown by leave type · Annual vs sick vs statutory");
 
     const leaveRows = [

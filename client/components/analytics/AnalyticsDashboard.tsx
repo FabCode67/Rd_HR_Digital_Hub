@@ -178,15 +178,15 @@ export default function AnalyticsDashboard() {
   type SectionCfg = { enabled: boolean; from: string; to: string };
 
   const [sections, setSections] = useState<Record<SectionKey, SectionCfg>>({
-    overview:    { enabled: true,  from: yearStart, to: today },
-    employees:   { enabled: true,  from: yearStart, to: today },
-    gender:      { enabled: true,  from: yearStart, to: today },
-    departments: { enabled: true,  from: yearStart, to: today },
-    positions:   { enabled: true,  from: yearStart, to: today },
-    leave:       { enabled: !!leaveSummary,        from: yearStart, to: today },
-    performance: { enabled: !!performanceSummary,  from: yearStart, to: today },
-    exits:       { enabled: !!exitSummary,         from: yearStart, to: today },
-    turnover:    { enabled: !!turnoverData,         from: yearStart, to: today },
+    overview:    { enabled: true, from: yearStart, to: today },
+    employees:   { enabled: true, from: yearStart, to: today },
+    gender:      { enabled: true, from: yearStart, to: today },
+    departments: { enabled: true, from: yearStart, to: today },
+    positions:   { enabled: true, from: yearStart, to: today },
+    leave:       { enabled: true, from: yearStart, to: today },
+    performance: { enabled: true, from: yearStart, to: today },
+    exits:       { enabled: true, from: yearStart, to: today },
+    turnover:    { enabled: true, from: yearStart, to: today },
   });
 
   const SECTION_META: Record<SectionKey, { label: string; desc: string; icon: string; color: string }> = {
