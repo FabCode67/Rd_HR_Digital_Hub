@@ -33,6 +33,7 @@ export interface AnalyticsData {
   leaveSummary:   any;
   performanceSummary?: any;
   turnoverData?:  any;
+  exitSummary?:   any;
   metrics: {
     filled: number; vacant: number; fillRate: number;
     active: number; inactive: number; suspended: number; terminated: number;
@@ -202,21 +203,18 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  // Leave by department
+  // Leave by department — computed from approved records (year-filtered)
   const leaveByDept: Record<string, number> = {};
   if (data.leaveSummary?.employees) {
-    // Aggregate all leave days by employee, tie to dept via filled positions
     data.leaveSummary.employees.forEach((e: any) => {
-      const totalUsed = (e.allocations || []).reduce((s: number, a: any) => s + (a.used_days || 0), 0);
+      const approvedRecords = (e.records || []).filter((r: any) => r.status === "approved");
+      const totalUsed = approvedRecords.reduce((s: number, r: any) => s + (r.days_taken || 0), 0);
       if (totalUsed > 0) {
         const emp = employees.find((em: any) => em.email === e.email);
         if (emp) {
-          const pos = positions.find((p: any) => !p.is_vacant && p.employee_id === emp.id);
-          const dept = pos
-            ? departments.find((d: any) => d.id === pos.department_id)?.name
-            : undefined;
-          const deptName = dept || "Unknown";
-          leaveByDept[deptName] = (leaveByDept[deptName] || 0) + totalUsed;
+          const pos = positions.find((p: any) => !p.is_vacant && (p as any).employee_id === emp.id);
+          const dept = pos ? departments.find((d: any) => d.id === pos.department_id)?.name : undefined;
+          leaveByDept[dept || "Unknown"] = (leaveByDept[dept || "Unknown"] || 0) + totalUsed;
         }
       }
     });
@@ -227,13 +225,24 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
     .sort((a, b) => b.total_days - a.total_days)
     .slice(0, 10);
 
-  // Leave types total
+  // Leave types total — sum from actual approved leave RECORDS (not allocations)
+  // Records are year-filtered by the backend; allocations.used_days accumulates across all time
   const leaveTotals = { annual: 0, sick: 0, maternity: 0, paternity: 0, compassionate: 0 };
   (data.leaveSummary?.employees ?? []).forEach((e: any) => {
-    (e.allocations || []).forEach((a: any) => {
-      const lt = a.leave_type as keyof typeof leaveTotals;
-      if (lt in leaveTotals) leaveTotals[lt] += a.used_days || 0;
-    });
+    // Prefer records (actual leave taken, year-filtered by backend)
+    const approvedRecords = (e.records || []).filter((r: any) => r.status === "approved");
+    if (approvedRecords.length > 0) {
+      approvedRecords.forEach((r: any) => {
+        const lt = r.leave_type as keyof typeof leaveTotals;
+        if (lt in leaveTotals) leaveTotals[lt] += r.days_taken || 0;
+      });
+    } else {
+      // Fallback to allocations only when no records exist yet
+      (e.allocations || []).forEach((a: any) => {
+        const lt = a.leave_type as keyof typeof leaveTotals;
+        if (lt in leaveTotals) leaveTotals[lt] += a.used_days || 0;
+      });
+    }
   });
 
   // Performance by department (from performanceSummary if available)
@@ -781,6 +790,73 @@ export async function exportPowerPoint(data: AnalyticsData, sections: SectionCon
       ? `${topDept.name} is the largest department with ${topDept.Filled + topDept.Vacant} positions (${topDept.Filled} filled, ${topDept.Vacant} vacant). Overall organisation fill rate is ${m.fillRate.toFixed(0)}% — ${m.fillRate >= 85 ? "indicating a well-staffed organisation" : "suggesting active recruitment is needed to reach optimal capacity"}.`
       : "No department data available.";
     interpretation(s, intText);
+  }
+
+  // ── SLIDE E: Exit Analysis ────────────────────────────────────────────────
+  if (sections.exits?.enabled && data.exitSummary) {
+    const es = data.exitSummary;
+    const exits: any[] = es.exits ?? [];
+    if (exits.length > 0) {
+      const s = addSlide("Employee Exit Analysis", `Departures by reason, type and department · ${periodLabel("exits")}`);
+
+      // KPI boxes
+      const ekpis = [
+        { label: "Total Exits",       value: String(es.total ?? 0),                           accent: C.dark  },
+        { label: "Resignations",      value: String(es.by_reason?.resignation ?? 0),           accent: C.amber },
+        { label: "Terminations",      value: String(es.by_reason?.termination ?? 0),           accent: C.red   },
+        { label: "End of Contract",   value: String(es.by_reason?.end_of_contract ?? 0),       accent: C.sky   },
+        { label: "Regrettable",       value: String(es.by_type?.regrettable ?? 0),             accent: C.violet},
+      ];
+      const ekw = 2.4, ekh = 1.0, ekg = 0.1;
+      ekpis.forEach((k, i) => metricBox(s, 0.22 + i * (ekw + ekg), 1.2, ekw, ekh, k.label, k.value, k.accent));
+
+      // Exits by department — horizontal bar (left half)
+      const byDept = Object.entries(es.by_department ?? {})
+        .map(([name, count]) => ({ name: name.slice(0, 20), value: count as number }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 8);
+
+      if (byDept.length > 0) {
+        s.addText("Exits by Department", { x: 0.22, y: 2.4, w: 6.5, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial" });
+        hBar(s, byDept, 0.22, 2.75, 6.5, Math.min(byDept.length * 0.45, 3.2), C.red);
+      }
+
+      // Exit reason + type pie (right half)
+      s.addText("By Reason", { x: 7.2, y: 2.4, w: 2.8, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+      drawPie(s, [
+        { label: "Resignation",    value: es.by_reason?.resignation     ?? 0, color: C.amber  },
+        { label: "Termination",    value: es.by_reason?.termination     ?? 0, color: C.red    },
+        { label: "End of Contract",value: es.by_reason?.end_of_contract ?? 0, color: C.sky    },
+      ], 7.6, 2.75, 1.8, 7.1, 2.85, 5.8);
+
+      s.addText("By Type", { x: 10.2, y: 2.4, w: 2.8, h: 0.3, fontSize: 10, bold: true, color: C.navy, fontFace: "Arial", align: "center" });
+      drawPie(s, [
+        { label: "Regrettable",     value: es.by_type?.regrettable     ?? 0, color: C.red     },
+        { label: "Non-Regrettable", value: es.by_type?.non_regrettable ?? 0, color: C.green   },
+      ], 10.6, 2.75, 1.8, 10.1, 2.85, 2.2);
+
+      // Exit list table
+      const exitRows = exits.slice(0, 8).map((e: any) => [
+        e.employee_name ?? "",
+        e.department_name ?? "—",
+        e.exit_reason_label ?? e.exit_reason ?? "",
+        e.exit_type_label   ?? e.exit_type   ?? "",
+        e.exit_date ? e.exit_date.slice(0, 10) : "",
+      ]);
+      if (exitRows.length > 0) {
+        addTable(s, 0.22, 5.9, W - 0.44,
+          ["Employee", "Department", "Reason", "Type", "Date"],
+          exitRows, 8);
+      }
+
+      const regPct = (es.total ?? 0) > 0 ? Math.round((es.by_type?.regrettable ?? 0) / es.total * 100) : 0;
+      interpretation(s,
+        `${es.total} exits recorded. ${
+          (es.by_reason?.resignation ?? 0) > (es.by_reason?.termination ?? 0)
+            ? "Resignations dominate — review engagement and compensation to reduce voluntary attrition."
+            : "Terminations dominate — review performance management and hiring quality."
+        } ${regPct}% of exits were regrettable, representing talent the organisation wished to retain.`, 6.6);
+    }
   }
 
   // ── SLIDE T: Turnover & Retention Analysis ─────────────────────────────────

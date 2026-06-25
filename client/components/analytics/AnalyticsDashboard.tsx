@@ -495,8 +495,8 @@ export default function AnalyticsDashboard() {
 
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
-    departments, positions, employees, leaveSummary, performanceSummary, turnoverData, metrics: a,
-  }), [departments, positions, employees, leaveSummary, performanceSummary, turnoverData, a]);
+    departments, positions, employees, leaveSummary, performanceSummary, turnoverData, exitSummary, metrics: a,
+  }), [departments, positions, employees, leaveSummary, performanceSummary, turnoverData, exitSummary, a]);
 
   const handleExcel = useCallback(async () => {
     setExporting("excel"); setShowExportBuilder(false);
