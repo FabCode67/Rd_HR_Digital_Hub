@@ -38,6 +38,11 @@ async function fetchAllPages<T>(
 
 function fmt(n: number) { return Math.round(n).toString(); }
 function pct(n: number) { return `${Math.round(n)}%`; }
+function calcAge(dob: string): number {
+  const now = new Date();
+  const d   = new Date(dob);
+  return Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+}
 
 // ─── palette ─────────────────────────────────────────────────────────────────
 
@@ -249,6 +254,72 @@ export default function AnalyticsDashboard() {
     void load();
     return () => { mounted = false; };
   }, []);
+
+  // ── Derived KPI metrics ────────────────────────────────────────────────────
+  const headcountMetrics = useMemo(() => {
+    const total  = employees.length;
+    const male   = employees.filter((e: any) => e.gender === "male").length;
+    const female = employees.filter((e: any) => e.gender === "female").length;
+    const none   = total - male - female;
+    const malePct   = total > 0 ? Math.round((male   / total) * 100) : 0;
+    const femalePct = total > 0 ? Math.round((female / total) * 100) : 0;
+    return { total, male, female, none, malePct, femalePct };
+  }, [employees]);
+
+  const avgAgeMetrics = useMemo(() => {
+    const now = new Date();
+    const ages = employees
+      .filter((e: any) => e.date_of_birth)
+      .map((e: any) => {
+        const dob = new Date(e.date_of_birth);
+        return Math.floor((now.getTime() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      })
+      .filter(age => age > 15 && age < 80);
+    const avg = ages.length > 0 ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
+    const min = ages.length > 0 ? Math.min(...ages) : 0;
+    const max = ages.length > 0 ? Math.max(...ages) : 0;
+    return { avg, min, max, count: ages.length };
+  }, [employees]);
+
+  const bandMetrics = useMemo(() => {
+    // Count filled positions by band group
+    const LOWER  = ["B1","B2","B3","B4"];
+    const MID    = ["B5","B6","B7"];
+    const UPPER  = ["B8","B9","B10"];
+    const SPEC   = ["DSA","GT","Intern"];
+    const withBand = positions.filter(p => p.band);
+    const total    = withBand.length || 1;
+    const lower  = withBand.filter(p => LOWER.includes(p.band ?? "")).length;
+    const mid    = withBand.filter(p => MID.includes(p.band ?? "")).length;
+    const upper  = withBand.filter(p => UPPER.includes(p.band ?? "")).length;
+    const spec   = withBand.filter(p => SPEC.includes(p.band ?? "")).length;
+    const lowerPct = Math.round((lower / total) * 100);
+    return { lower, mid, upper, spec, total: withBand.length, lowerPct };
+  }, [positions]);
+
+  const attritionMetrics = useMemo(() => {
+    if (!turnoverData) return null;
+    return {
+      rate:      turnoverData.turnover_rate,
+      retention: turnoverData.retention_rate,
+      exits:     turnoverData.exits_this_year,
+      voluntary: turnoverData.voluntary_exits,
+      yoy:       turnoverData.yoy_change,
+    };
+  }, [turnoverData]);
+
+  const leaveUtilMetrics = useMemo(() => {
+    if (!leaveSummary) return null;
+    const emps: any[] = leaveSummary.employees ?? [];
+    const totalEntitlement = emps.reduce((s: number, e: any) => s + (e.annual_entitlement ?? 0), 0);
+    const annualUsed = emps.reduce((s: number, e: any) => {
+      const approved = (e.records ?? []).filter((r: any) => r.status === "approved" && r.leave_type === "annual");
+      return s + approved.reduce((ss: number, r: any) => ss + (r.days_taken ?? 0), 0);
+    }, 0);
+    const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
+    const onLeave = leaveSummary.on_leave_now ?? 0;
+    return { rate, annualUsed, totalEntitlement, onLeave };
+  }, [leaveSummary]);
 
   const a = useMemo(() => {
     const filled   = positions.filter(p => !p.is_vacant).length;
@@ -574,27 +645,217 @@ export default function AnalyticsDashboard() {
         </div>
       ) : (
         <>
-          {/* ── KPI cards ── */}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-            <MetricCard label="Departments" value={fmt(departments.length)}
-              detail={`${departments.filter(d => !d.parent_id).length} root units`}
-              icon={<Building2 className="h-4 w-4"/>} accent="bg-sky-500" />
-            <MetricCard label="Positions" value={fmt(positions.length)}
-              detail={`${a.filled} filled · ${a.vacant} vacant`}
-              icon={<Briefcase className="h-4 w-4"/>} accent="bg-indigo-500" />
-            <MetricCard label="Employees" value={fmt(employees.length)}
-              detail={`${a.active} active`} sub={`${a.inactive + a.suspended} need attention`}
-              icon={<Users className="h-4 w-4"/>} accent="bg-emerald-500" />
-            <MetricCard label="Fill Rate" value={pct(a.fillRate)}
-              detail={`${a.filled} of ${positions.length} filled`}
-              icon={<BadgeCheck className="h-4 w-4"/>} accent="bg-amber-500" />
-            <MetricCard label="Vacancies" value={fmt(a.vacant)}
-              detail={positions.length > 0 ? `${pct((a.vacant/positions.length)*100)} open` : "No positions"}
-              icon={<AlertCircle className="h-4 w-4"/>} accent="bg-rose-500" />
-            <MetricCard label="Growth (6 mo)" value={`+${a.posLine.reduce((s,m) => s + m.Positions,0)}`}
-              detail="New positions added"
-              sub={`+${a.posLine.reduce((s,m) => s + m.Employees,0)} employees`}
-              icon={<TrendingUp className="h-4 w-4"/>} accent="bg-violet-500" />
+          {/* ── 6 New KPI Cards ── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+            {/* 1. Staff Headcount + Gender */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="h-1 w-full bg-cyan-500" />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Staff Headcount</p>
+                  <div className="rounded-xl bg-cyan-100 dark:bg-slate-800 p-2"><Users className="h-4 w-4 text-cyan-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{headcountMetrics.total}</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {employees.length - a.active} inactive</p>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span>♂ Male {headcountMetrics.malePct}%</span>
+                    <span>♀ Female {headcountMetrics.femalePct}%</span>
+                  </div>
+                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div className="h-full bg-blue-500 transition-all" style={{ width: `${headcountMetrics.malePct}%` }} />
+                    <div className="h-full bg-pink-500 transition-all" style={{ width: `${headcountMetrics.femalePct}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">{headcountMetrics.male} male</span>
+                    <span className="text-slate-400">{headcountMetrics.none > 0 ? `${headcountMetrics.none} unspecified` : ""}</span>
+                    <span className="font-semibold text-pink-600 dark:text-pink-400">{headcountMetrics.female} female</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Average Age */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="h-1 w-full bg-violet-500" />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Average Age</p>
+                  <div className="rounded-xl bg-violet-100 dark:bg-slate-800 p-2"><BadgeCheck className="h-4 w-4 text-violet-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                  {avgAgeMetrics.avg > 0 ? `${avgAgeMetrics.avg} yrs` : "—"}
+                </p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {avgAgeMetrics.count > 0 ? `Range: ${avgAgeMetrics.min}–${avgAgeMetrics.max} yrs` : "Add date of birth to employees"}
+                </p>
+                {avgAgeMetrics.count > 0 && (
+                  <div className="mt-3 flex gap-2">
+                    {[
+                      { label: "<30",   count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) < 30).length,  color: "bg-cyan-500"   },
+                      { label: "30–40", count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 30 && calcAge(e.date_of_birth) < 40).length, color: "bg-violet-500" },
+                      { label: "40–50", count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 40 && calcAge(e.date_of_birth) < 50).length, color: "bg-amber-500"  },
+                      { label: "50+",   count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 50).length,  color: "bg-rose-500"   },
+                    ].map(g => (
+                      <div key={g.label} className="flex-1 text-center">
+                        <div className={`mx-auto h-1.5 w-full rounded-full ${g.color} mb-1`} />
+                        <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{g.count}</p>
+                        <p className="text-[9px] text-slate-400">{g.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Band Distribution */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="h-1 w-full bg-amber-500" />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Band Distribution</p>
+                  <div className="rounded-xl bg-amber-100 dark:bg-slate-800 p-2"><Briefcase className="h-4 w-4 text-amber-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{bandMetrics.total}</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Positions with band assigned</p>
+                <div className="mt-3 space-y-1.5">
+                  {[
+                    { label: "B1–B4",    value: bandMetrics.lower, color: "bg-emerald-500" },
+                    { label: "B5–B7",    value: bandMetrics.mid,   color: "bg-amber-500"  },
+                    { label: "B8–B10",   value: bandMetrics.upper, color: "bg-violet-500" },
+                    { label: "DSA/GT/Int",value: bandMetrics.spec,  color: "bg-slate-400"  },
+                  ].map(b => {
+                    const pctVal = bandMetrics.total > 0 ? Math.round((b.value / bandMetrics.total) * 100) : 0;
+                    return (
+                      <div key={b.label} className="flex items-center gap-2">
+                        <span className="w-16 text-[10px] text-slate-500 dark:text-slate-400 shrink-0">{b.label}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                          <div className={`h-full rounded-full ${b.color}`} style={{ width: `${pctVal}%` }} />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 w-8 text-right">{pctVal}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Attrition Rate */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className={`h-1 w-full ${
+                !attritionMetrics ? "bg-slate-300" :
+                attritionMetrics.rate > 15 ? "bg-rose-500" :
+                attritionMetrics.rate > 8  ? "bg-amber-500" : "bg-emerald-500"
+              }`} />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Attrition Rate</p>
+                  <div className="rounded-xl bg-rose-100 dark:bg-slate-800 p-2"><TrendingUp className="h-4 w-4 text-rose-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                  {attritionMetrics ? `${attritionMetrics.rate}%` : "—"}
+                </p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {attritionMetrics ? `${attritionMetrics.exits} exits · ${attritionMetrics.retention}% retained` : "Loading…"}
+                </p>
+                {attritionMetrics && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 dark:text-slate-400">Voluntary exits</span>
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">{attritionMetrics.voluntary}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 dark:text-slate-400">YoY change</span>
+                      <span className={`font-semibold ${
+                        attritionMetrics.yoy <= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      }`}>{attritionMetrics.yoy > 0 ? "+" : ""}{attritionMetrics.yoy}%</span>
+                    </div>
+                    <div className="mt-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-center" style={{
+                      background: attritionMetrics.rate > 15 ? "#fff1f2" : attritionMetrics.rate > 8 ? "#fffbeb" : "#f0fdf4",
+                      color:      attritionMetrics.rate > 15 ? "#e11d48" : attritionMetrics.rate > 8 ? "#d97706" : "#16a34a",
+                    }}>
+                      {attritionMetrics.rate <= 8 ? "✅ Healthy" : attritionMetrics.rate <= 15 ? "⚠️ Moderate" : "🔴 High — review urgently"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 5. Fill Rate */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className={`h-1 w-full ${
+                a.fillRate >= 85 ? "bg-emerald-500" : a.fillRate >= 70 ? "bg-amber-500" : "bg-rose-500"
+              }`} />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Fill Rate</p>
+                  <div className="rounded-xl bg-emerald-100 dark:bg-slate-800 p-2"><AlertCircle className="h-4 w-4 text-emerald-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{pct(a.fillRate)}</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.filled} of {positions.length} positions filled</p>
+                <div className="mt-3 space-y-2">
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div className={`h-full rounded-full transition-all ${
+                      a.fillRate >= 85 ? "bg-emerald-500" : a.fillRate >= 70 ? "bg-amber-500" : "bg-rose-500"
+                    }`} style={{ width: `${Math.min(a.fillRate, 100)}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{a.filled} filled</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">{a.vacant} vacant</span>
+                  </div>
+                  <div className="rounded-lg px-2 py-1 text-[10px] font-semibold text-center" style={{
+                    background: a.fillRate >= 85 ? "#f0fdf4" : a.fillRate >= 70 ? "#fffbeb" : "#fff1f2",
+                    color:      a.fillRate >= 85 ? "#16a34a" : a.fillRate >= 70 ? "#d97706" : "#e11d48",
+                  }}>
+                    {a.fillRate >= 85 ? "✅ Well staffed" : a.fillRate >= 70 ? "⚠️ Recruitment needed" : "🔴 Critical vacancies"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. Leave Utilisation */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className={`h-1 w-full ${
+                !leaveUtilMetrics ? "bg-slate-300" :
+                leaveUtilMetrics.rate >= 80 ? "bg-rose-500" :
+                leaveUtilMetrics.rate >= 50 ? "bg-amber-500" : "bg-cyan-500"
+              }`} />
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">Leave Utilisation</p>
+                  <div className="rounded-xl bg-cyan-100 dark:bg-slate-800 p-2"><Building2 className="h-4 w-4 text-cyan-600" /></div>
+                </div>
+                <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                  {leaveUtilMetrics ? `${leaveUtilMetrics.rate}%` : "—"}
+                </p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {leaveUtilMetrics ? `${leaveUtilMetrics.annualUsed} of ${leaveUtilMetrics.totalEntitlement} days used` : "Loading…"}
+                </p>
+                {leaveUtilMetrics && (
+                  <div className="mt-3 space-y-2">
+                    <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className={`h-full rounded-full transition-all ${
+                        leaveUtilMetrics.rate >= 80 ? "bg-rose-500" :
+                        leaveUtilMetrics.rate >= 50 ? "bg-amber-500" : "bg-cyan-500"
+                      }`} style={{ width: `${Math.min(leaveUtilMetrics.rate, 100)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 dark:text-slate-400">On leave now</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400">{leaveUtilMetrics.onLeave} employee{leaveUtilMetrics.onLeave !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="rounded-lg px-2 py-1 text-[10px] font-semibold text-center" style={{
+                      background: leaveUtilMetrics.rate >= 80 ? "#fff1f2" : leaveUtilMetrics.rate >= 50 ? "#fffbeb" : "#ecfeff",
+                      color:      leaveUtilMetrics.rate >= 80 ? "#e11d48" : leaveUtilMetrics.rate >= 50 ? "#d97706" : "#0891b2",
+                    }}>
+                      {leaveUtilMetrics.rate >= 80 ? "🔴 High — monitor coverage" :
+                       leaveUtilMetrics.rate >= 50 ? "⚠️ Moderate utilisation" :
+                       "✅ Healthy utilisation"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* ── Row 1: Bar charts ── */}
