@@ -616,8 +616,8 @@ export const leaveAPI = {
     return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}${qs}`);
   },
   async grantLeave(employeeId: string, payload: {
-    leave_type: string; start_date: string; end_date: string;
-    days_taken: number; notes?: string; override_total?: number;
+  leave_type: string; start_date: string; end_date: string;
+  days_taken?: number; notes?: string; override_total?: number;
   }): Promise<any> {
     return fetchAPI<any>(`${API_PREFIX}/leave/employee/${employeeId}/grant`, {
       method: "POST", body: JSON.stringify(payload),

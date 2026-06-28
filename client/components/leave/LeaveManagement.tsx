@@ -28,11 +28,11 @@ interface EmployeeLeaveData {
 
 // ── Leave type config ──────────────────────────────────────────────────────────
 const LEAVE_TYPES = [
-  { value: "annual",        label: "Annual Leave",       color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",       fixed: null },
-  { value: "sick",          label: "Sick Leave",          color: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",     fixed: null },
-  { value: "maternity",     label: "Maternity Leave",     color: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",         fixed: 90  },
-  { value: "paternity",     label: "Paternity Leave",     color: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",         fixed: 14  },
-  { value: "compassionate", label: "Compassionate Leave", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300", fixed: null },
+  { value: "annual",        label: "Annual Leave",       color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",       fixed: null,  desc: "Permanent: 21d · Temporary: 18d · MD: 28d" },
+  { value: "sick",          label: "Sick Leave",          color: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",     fixed: null,  desc: "Based on recovery — admin sets duration" },
+  { value: "maternity",     label: "Maternity Leave",     color: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",         fixed: 90,    desc: "Fixed: 90 days (3 months)" },
+  { value: "paternity",     label: "Paternity Leave",     color: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",         fixed: 14,    desc: "Fixed: 14 days (2 weeks)" },
+  { value: "compassionate", label: "Compassionate Leave", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300", fixed: null,  desc: "Arranged by HR — admin sets duration" },
 ];
 const leaveLabel = (t: string) => LEAVE_TYPES.find(l => l.value === t)?.label ?? t;
 const leaveColor = (t: string) => LEAVE_TYPES.find(l => l.value === t)?.color ?? "bg-slate-100 text-slate-600";
@@ -112,6 +112,20 @@ function GrantLeaveForm({ employeeId, employeeName, annualEntitlement, allocatio
   const ltMeta          = LEAVE_TYPES.find(t => t.value === lt)!;
   const needsOverride   = ["sick", "compassionate"].includes(lt);
 
+  // Auto-set end date for fixed leave types when start date changes
+  useEffect(() => {
+    if (!start) return;
+    if (lt === "maternity") {
+      const e = new Date(start);
+      e.setDate(e.getDate() + 89); // 90 days inclusive
+      setEnd(e.toISOString().slice(0, 10));
+    } else if (lt === "paternity") {
+      const e = new Date(start);
+      e.setDate(e.getDate() + 13); // 14 days inclusive
+      setEnd(e.toISOString().slice(0, 10));
+    }
+  }, [start, lt]);
+
   // Auto-calculate WORKING days (Mon-Fri) from date range
   useEffect(() => {
     if (start && end) {
@@ -145,7 +159,6 @@ function GrantLeaveForm({ employeeId, employeeName, annualEntitlement, allocatio
         leave_type:     lt,
         start_date:     new Date(start).toISOString(),
         end_date:       new Date(end).toISOString(),
-        days_taken:     Number(days),
         notes:          notes.trim() || undefined,
         override_total: needsOverride && override ? Number(override) : undefined,
       });
@@ -165,15 +178,16 @@ function GrantLeaveForm({ employeeId, employeeName, annualEntitlement, allocatio
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
           Leave Type <span className="text-red-500">*</span>
         </label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {LEAVE_TYPES.map(t => (
             <label key={t.value} className={cn(
-              "flex items-center gap-2 rounded-xl border-2 px-3 py-2 cursor-pointer transition-all",
+              "flex flex-col rounded-xl border-2 px-3 py-2.5 cursor-pointer transition-all",
               lt === t.value ? "border-cyan-400 bg-cyan-50 dark:bg-cyan-950/30"
                              : "border-slate-200 dark:border-slate-700 hover:border-slate-300")}>
               <input type="radio" name="lt" value={t.value} checked={lt === t.value}
                 onChange={() => setLt(t.value)} className="sr-only" />
-              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap", t.color)}>{t.label}</span>
+              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold self-start mb-1", t.color)}>{t.label}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">{t.desc}</span>
             </label>
           ))}
         </div>
@@ -186,14 +200,43 @@ function GrantLeaveForm({ employeeId, employeeName, annualEntitlement, allocatio
             ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 text-red-700 dark:text-red-300"
             : "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300")}>
           <p className="font-semibold">{annualRemaining} annual day{annualRemaining !== 1 ? "s" : ""} remaining</p>
-          <p className="text-xs opacity-70 mt-0.5">Entitlement: {annualEntitlement} days/year</p>
+          <p className="text-xs opacity-70 mt-0.5">Entitlement: {annualEntitlement} days/year · Weekends excluded from count</p>
         </div>
       )}
-      {["maternity","paternity"].includes(lt) && (
+      {lt === "maternity" && (
+        <div className="flex items-start gap-2 rounded-xl border border-pink-200 bg-pink-50 dark:border-pink-800 dark:bg-pink-950/30 px-4 py-3 text-sm text-pink-700 dark:text-pink-300">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Maternity Leave — 3 months (90 calendar days)</p>
+            <p className="text-xs opacity-80 mt-0.5">Set the start date — end date auto-calculates 90 days forward. Days are fixed by policy.</p>
+          </div>
+        </div>
+      )}
+      {lt === "paternity" && (
         <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
           <Info className="h-4 w-4 shrink-0 mt-0.5" />
-          {lt === "maternity" ? "Maternity leave: 90 days (3 months) — auto-filled."
-                             : "Paternity leave: 14 days (2 weeks) — auto-filled."}
+          <div>
+            <p className="font-semibold">Paternity Leave — 2 weeks (14 calendar days)</p>
+            <p className="text-xs opacity-80 mt-0.5">Set the start date — end date auto-calculates 14 days forward. Days are fixed by policy.</p>
+          </div>
+        </div>
+      )}
+      {lt === "sick" && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Sick Leave — duration based on recovery</p>
+            <p className="text-xs opacity-80 mt-0.5">Set the expected recovery period. You can update later if the employee needs more time. Working days (Mon–Fri) are counted.</p>
+          </div>
+        </div>
+      )}
+      {lt === "compassionate" && (
+        <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 px-4 py-3 text-sm text-violet-700 dark:text-violet-300">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Compassionate Leave — arranged by HR</p>
+            <p className="text-xs opacity-80 mt-0.5">Granted at HR’s discretion for bereavement, family emergencies or personal hardship. Set the duration and add a note for records.</p>
+          </div>
         </div>
       )}
 
@@ -509,7 +552,7 @@ export default function LeaveManagement() {
           {[
             {
               label: month ? `Days taken in ${MONTHS[month-1]}` : "Total days taken (year)",
-              value: summary.total_month_days ?? 0,
+              value: summary.total_days ?? 0,
               accent: "bg-cyan-500",
               sub: month ? `Across all employees in ${MONTHS[month-1]}` : "All leave types combined",
             },
@@ -634,9 +677,9 @@ export default function LeaveManagement() {
                       <td className="px-5 py-3">
                         {month ? (
                           <div className="flex items-center gap-2">
-                            {emp.month_days_taken > 0 ? (
+                            {emp.period_days_taken > 0 ? (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 px-2.5 py-1 text-xs font-bold text-cyan-700 dark:text-cyan-300">
-                                <CalendarDays className="h-3 w-3" /> {emp.month_days_taken} day{emp.month_days_taken !== 1 ? "s" : ""}
+                                <CalendarDays className="h-3 w-3" /> {emp.period_days_taken} day{emp.period_days_taken !== 1 ? "s" : ""}
                               </span>
                             ) : (
                               <span className="text-xs text-slate-400">No leave</span>
