@@ -308,18 +308,7 @@ export default function AnalyticsDashboard() {
     };
   }, [turnoverData]);
 
-  const leaveUtilMetrics = useMemo(() => {
-    if (!leaveSummary) return null;
-    const emps: any[] = leaveSummary.employees ?? [];
-    const totalEntitlement = emps.reduce((s: number, e: any) => s + (e.annual_entitlement ?? 0), 0);
-    const annualUsed = emps.reduce((s: number, e: any) => {
-      const approved = (e.records ?? []).filter((r: any) => r.status === "approved" && r.leave_type === "annual");
-      return s + approved.reduce((ss: number, r: any) => ss + (r.days_taken ?? 0), 0);
-    }, 0);
-    const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
-    const onLeave = leaveSummary.on_leave_now ?? 0;
-    return { rate, annualUsed, totalEntitlement, onLeave };
-  }, [leaveSummary, filteredLeaveEmps]);
+  // leaveUtilMetrics declared after filteredLeaveEmps below
 
   const a = useMemo(() => {
     const filled   = positions.filter(p => !p.is_vacant).length;
@@ -537,6 +526,20 @@ export default function AnalyticsDashboard() {
       return deptId && subtree.has(deptId);
     });
   }, [leaveSummary, leaveDeptFilter, getDeptSubtree, emailToDeptId]);
+
+  // leaveUtilMetrics uses filteredLeaveEmps so must come after it
+  const leaveUtilMetrics = useMemo(() => {
+    if (!leaveSummary) return null;
+    const emps: any[] = filteredLeaveEmps.length > 0 ? filteredLeaveEmps : (leaveSummary.employees ?? []);
+    const totalEntitlement = emps.reduce((s: number, e: any) => s + (e.annual_entitlement ?? 0), 0);
+    const annualUsed = emps.reduce((s: number, e: any) => {
+      const approved = (e.records ?? []).filter((r: any) => r.status === "approved" && r.leave_type === "annual");
+      return s + approved.reduce((ss: number, r: any) => ss + (r.days_taken ?? 0), 0);
+    }, 0);
+    const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
+    const onLeave = leaveSummary.on_leave_now ?? 0;
+    return { rate, annualUsed, totalEntitlement, onLeave };
+  }, [leaveSummary, filteredLeaveEmps]);
 
   // Recompute leaveMetrics from filteredLeaveEmps
   const leaveMetrics = useMemo(() => {
