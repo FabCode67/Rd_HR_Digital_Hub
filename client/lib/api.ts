@@ -135,10 +135,6 @@ export const departmentAPI = {
   async getStats(): Promise<{ total: number; root: number; with_positions: number; empty: number }> {
     return fetchAPI(`${API_PREFIX}/departments/stats`);
   },
-
-  /**
-   * Get root departments only (no parent)
-   */
   async getRootDepartments(): Promise<Department[]> {
     return fetchAPI<Department[]>(ENDPOINTS.ROOT_DEPARTMENTS);
   },
@@ -200,6 +196,10 @@ export const positionAPI = {
     if (search) params.set('search', search);
     if (vacantOnly) params.set('vacant_only', 'true');
     return fetchAPI<Position[]>(`${ENDPOINTS.POSITIONS}?${params}`);
+  },
+
+  async getEmployeeDeptMap(): Promise<Record<string, string>> {
+    return fetchAPI<Record<string, string>>(`${API_PREFIX}/positions/employee-dept-map`);
   },
 
   async getStats(): Promise<{ total: number; filled: number; vacant: number; fill_rate: number }> {

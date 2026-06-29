@@ -167,6 +167,7 @@ export default function AnalyticsDashboard() {
   const [positions,   setPositions]   = useState<Position[]>([]);
   const [employees,   setEmployees]   = useState<Employee[]>([]);
   const [positionTree, setPositionTree] = useState<any[]>([]);
+  const [empDeptMap, setEmpDeptMap]     = useState<Record<string,string>>({});
   const [leaveSummary, setLeaveSummary]           = useState<any>(null);
   const [performanceSummary, setPerformanceSummary] = useState<any>(null);
   const [exitSummary, setExitSummary]               = useState<any>(null);
@@ -223,14 +224,16 @@ export default function AnalyticsDashboard() {
     async function load() {
       setLoading(true); setError(null);
       try {
-        const [depts, pos, emps, tree] = await Promise.all([
+        const [depts, pos, emps, tree, deptMap] = await Promise.all([
           fetchAllPages((s, l) => apiClient.department.getAll(s, l)),
           fetchAllPages((s, l) => apiClient.position.getAll(undefined, s, l)),
           fetchAllPages((s, l) => apiClient.employee.getAll(s, l)),
           apiClient.position.getOrganizationTree().catch(() => []),
+          apiClient.position.getEmployeeDeptMap().catch(() => ({})),
         ]);
         if (!mounted) return;
-        setDepartments(depts); setPositions(pos); setEmployees(emps); setPositionTree(tree);
+        setDepartments(depts); setPositions(pos); setEmployees(emps);
+        setPositionTree(tree); setEmpDeptMap(deptMap);
         // Set loading false immediately after core data — secondary data loads in background
         if (mounted) setLoading(false);
         // Load leave + performance summaries in parallel (non-critical, background)
@@ -508,38 +511,8 @@ export default function AnalyticsDashboard() {
     return ids;
   }, [departments]);
 
-  // Map employee email -> department_id by walking the position org tree
-  // PositionTreeNode has .employee?.email and .department_id
-  const emailToDeptId = useMemo(() => {
-    const map = new Map<string, string>();
-    const walk = (nodes: any[]) => {
-      nodes.forEach(node => {
-        // node is a DepartmentHierarchyNode: has .positions[] and .children[]
-        if (node.positions) {
-          node.positions.forEach((p: any) => {
-            if (p.employee?.email && node.id) {
-              map.set(p.employee.email, node.id); // map to department id
-            }
-            // Walk position children (sub-positions)
-            const walkPos = (pos: any) => {
-              if (pos.children?.length) {
-                pos.children.forEach((child: any) => {
-                  if (child.employee?.email && node.id) {
-                    map.set(child.employee.email, node.id);
-                  }
-                  walkPos(child);
-                });
-              }
-            };
-            walkPos(p);
-          });
-        }
-        if (node.children?.length) walk(node.children);
-      });
-    };
-    walk(positionTree);
-    return map;
-  }, [positionTree]);
+  // email -> department_id: comes directly from backend (EmployeePosition join)
+  const emailToDeptId = useMemo(() => new Map(Object.entries(empDeptMap)), [empDeptMap]);
 
   // Filtered leave employees
   const filteredLeaveEmps = useMemo(() => {

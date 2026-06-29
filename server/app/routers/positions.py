@@ -34,6 +34,30 @@ def get_position_stats(db: Session = Depends(get_db)):
     return {"total": total, "filled": filled, "vacant": vacant, "fill_rate": fill_rate}
 
 
+@router.get("/employee-dept-map")
+def get_employee_dept_map(
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """
+    Returns a mapping of {employee_email: department_id}
+    for all employees who have a current position assignment.
+    Used by the analytics dashboard for department filtering.
+    """
+    from app.models.models import EmployeePosition, Employee, Position
+    rows = (
+        db.query(Employee.email, Position.department_id)
+        .join(EmployeePosition, EmployeePosition.employee_id == Employee.id)
+        .join(Position, Position.id == EmployeePosition.position_id)
+        .filter(
+            EmployeePosition.is_current == True,
+            Employee.status == "ACTIVE",
+        )
+        .all()
+    )
+    return {email: str(dept_id) for email, dept_id in rows}
+
+
 @router.get("", response_model=List[PositionResponse])
 def list_positions(
     department_id: Optional[UUID] = Query(None),

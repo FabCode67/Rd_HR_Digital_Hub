@@ -364,7 +364,7 @@ export function EmployeeLeaveModal({ employeeId, employeeName, onClose }: {
           <div className="flex items-center gap-2">
             <select value={year} onChange={e => setYear(Number(e.target.value))}
               className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm">
-              {[year-1, year, year+1].map(y => <option key={y} value={y}>{y}</option>)}
+              {Array.from({ length: 2059 - 2014 + 1 }, (_, i) => 2014 + i).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
               <X className="h-5 w-5" />
@@ -535,8 +535,8 @@ export default function LeaveManagement() {
           </p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
-          className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-          {[year-1, year, year+1].map(y => <option key={y} value={y}>{y}</option>)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+          {Array.from({ length: 2059 - 2014 + 1 }, (_, i) => 2014 + i).map(y => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
 
