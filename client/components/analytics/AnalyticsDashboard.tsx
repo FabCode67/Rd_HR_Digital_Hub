@@ -319,7 +319,7 @@ export default function AnalyticsDashboard() {
     const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
     const onLeave = leaveSummary.on_leave_now ?? 0;
     return { rate, annualUsed, totalEntitlement, onLeave };
-  }, [leaveSummary]);
+  }, [leaveSummary, filteredLeaveEmps]);
 
   const a = useMemo(() => {
     const filled   = positions.filter(p => !p.is_vacant).length;
@@ -489,9 +489,59 @@ export default function AnalyticsDashboard() {
     };
   }, [performanceSummary]);
 
+  const [leaveDeptFilter, setLeaveDeptFilter] = useState<string>(""); // dept id or ""
+
+  // Build a flat dept tree with indent levels for the dropdown
+  const deptTree = useMemo(() => {
+    const result: { id: string; name: string; level: number; fullName: string }[] = [];
+    const addChildren = (parentId: string | null, level: number) => {
+      departments
+        .filter(d => (parentId === null ? !d.parent_id : d.parent_id === parentId))
+        .forEach(d => {
+          result.push({ id: d.id, name: d.name, level, fullName: d.name });
+          addChildren(d.id, level + 1);
+        });
+    };
+    addChildren(null, 0);
+    return result;
+  }, [departments]);
+
+  // Get all descendant dept IDs for a given dept (inclusive)
+  const getDeptSubtree = useCallback((deptId: string): Set<string> => {
+    const ids = new Set<string>();
+    const add = (id: string) => {
+      ids.add(id);
+      departments.filter(d => d.parent_id === id).forEach(d => add(d.id));
+    };
+    add(deptId);
+    return ids;
+  }, [departments]);
+
+  // Map email -> department id via positions
+  const emailToDeptId = useMemo(() => {
+    const map = new Map<string, string>();
+    employees.forEach(emp => {
+      const pos = positions.find(p => !p.is_vacant && (p as any).employee_email === emp.email);
+      if (pos && pos.department_id) map.set(emp.email, pos.department_id);
+    });
+    return map;
+  }, [employees, positions]);
+
+  // Filtered leave employees
+  const filteredLeaveEmps = useMemo(() => {
+    if (!leaveSummary?.employees) return [];
+    if (!leaveDeptFilter) return leaveSummary.employees;
+    const subtree = getDeptSubtree(leaveDeptFilter);
+    return leaveSummary.employees.filter((e: any) => {
+      const deptId = emailToDeptId.get(e.email);
+      return deptId && subtree.has(deptId);
+    });
+  }, [leaveSummary, leaveDeptFilter, getDeptSubtree, emailToDeptId]);
+
+  // Recompute leaveMetrics from filteredLeaveEmps
   const leaveMetrics = useMemo(() => {
     if (!leaveSummary?.employees?.length) return null;
-    const emps: any[] = leaveSummary.employees;
+    const emps: any[] = filteredLeaveEmps.length > 0 ? filteredLeaveEmps : leaveSummary.employees;
 
     // Totals per leave type
     const totals = { annual: 0, sick: 0, maternity: 0, paternity: 0, compassionate: 0 };
@@ -1210,6 +1260,48 @@ export default function AnalyticsDashboard() {
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
               </div>
 
+              {/* Department filter */}
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">
+                <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 shrink-0">Filter by Department:</span>
+                <div className="flex-1 min-w-48">
+                  <select
+                    value={leaveDeptFilter}
+                    onChange={e => setLeaveDeptFilter(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 focus:border-cyan-400 focus:outline-none"
+                  >
+                    <option value="">All Departments</option>
+                    {deptTree.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {"\u00a0".repeat(d.level * 3)}{d.level > 0 ? "└ " : ""}{d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {leaveDeptFilter && (
+                  <>
+                    <div className="flex items-center gap-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 px-3 py-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                      <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                        {departments.find(d => d.id === leaveDeptFilter)?.name}
+                        {getDeptSubtree(leaveDeptFilter).size > 1 && (
+                          <span className="ml-1 text-cyan-500">+{getDeptSubtree(leaveDeptFilter).size - 1} sub</span>
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setLeaveDeptFilter("")}
+                      className="rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+                <span className="text-xs text-slate-400">
+                  {filteredLeaveEmps.length} of {leaveSummary?.employees?.length ?? 0} employee{leaveSummary?.employees?.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+
               {/* Leave KPI strip */}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
@@ -1261,7 +1353,7 @@ export default function AnalyticsDashboard() {
                 </ChartCard>
 
                 {/* Annual leave utilisation per employee — bar */}
-                <ChartCard title="Annual Leave Utilisation" subtitle="Days used vs entitlement — top 10 employees by usage">
+                <ChartCard title="Annual Leave Utilisation" subtitle={`Days used vs entitlement — top 10 employees by usage${leaveDeptFilter ? ` · ${departments.find(d => d.id === leaveDeptFilter)?.name ?? ""}` : ""}`}>
                   {leaveMetrics.perEmployee.length > 0 ? (
                     <ResponsiveContainer width="100%" height={240}>
                       <BarChart data={leaveMetrics.perEmployee}
