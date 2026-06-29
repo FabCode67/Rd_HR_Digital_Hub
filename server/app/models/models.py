@@ -78,7 +78,7 @@ class Position(Base):
 class EmployeeStatus(str, enum.Enum):
     """Employee status enumeration."""
     ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
+    INACTIVE = "INACTIVE"   # maps to 'Exited' in the UI
     SUSPENDED = "SUSPENDED"
     TERMINATED = "TERMINATED"
 

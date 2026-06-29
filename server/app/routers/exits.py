@@ -1,6 +1,6 @@
 """
 Employee Exit API routes.
-Processes an employee's departure: vacates position, sets status INACTIVE,
+Processes an employee's departure: vacates position, sets status to INACTIVE (displayed as 'Exited'),
 records reason/type/next-move.
 """
 import uuid
@@ -123,7 +123,8 @@ def list_exits(
         row = _fmt(ex, department_name=dept_name)
         row["employee_name"]  = emp.full_name if emp else "Unknown"
         row["employee_email"] = emp.email     if emp else None
-        row["employee_status"]= emp.status    if emp else None
+        emp_status = emp.status if emp else None
+        row["employee_status"] = "Exited" if emp_status == "INACTIVE" else emp_status
         result.append(row)
 
     # Aggregate by department
@@ -238,7 +239,8 @@ def get_turnover(
         "year":              y,
         "total_employees":   total_employees,
         "active_now":        active_now,
-        "inactive_now":      inactive_now,
+        "exited_now":      inactive_now,
+        "inactive_now":    inactive_now,  # backward compat
         "avg_headcount":     round(avg_headcount, 1),
         "exits_this_year":   exits_this_year,
         "voluntary_exits":   voluntary_exits,
@@ -348,7 +350,7 @@ def process_exit(
         "message":         "Employee exit processed",
         "exit":            _fmt(exit_record),
         "position_vacated": position_title,
-        "employee_status":  emp.status,
+        "employee_status":  "Exited",
     }
 
 
@@ -407,4 +409,4 @@ def undo_exit(
 
     db.delete(ex)
     db.commit()
-    return {"message": "Exit undone. Employee status restored to ACTIVE. Please re-assign a position manually."}
+    return {"message": "Exit undone. Employee status restored to Active. Please re-assign a position manually."}

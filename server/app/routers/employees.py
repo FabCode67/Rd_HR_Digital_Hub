@@ -54,7 +54,8 @@ def get_employee_stats(db: Session = Depends(get_db)):
     return {
         "total":      total,
         "active":     counts.get("ACTIVE", 0),
-        "inactive":   counts.get("INACTIVE", 0),
+        "exited":     counts.get("INACTIVE", 0),
+        "inactive":   counts.get("INACTIVE", 0),  # kept for backward compat
         "suspended":  counts.get("SUSPENDED", 0),
         "terminated": counts.get("TERMINATED", 0),
     }

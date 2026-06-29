@@ -381,34 +381,43 @@ export default function AnalyticsDashboard() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 7);
 
-    // Line chart: positions per month (by created_at, last 6 months)
+    // Monthly additions — all time, one entry per month since earliest record
     const now = new Date();
-    const months: { key: string; label: string }[] = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    const earliestPos  = positions.reduce((min, p) => p.created_at && p.created_at < min ? p.created_at : min, now.toISOString());
+    const earliestEmp  = employees.reduce((min, e) => e.created_at && e.created_at < min ? e.created_at : min, now.toISOString());
+    const earliest     = earliestPos < earliestEmp ? earliestPos : earliestEmp;
+    const startDate    = earliest ? new Date(earliest) : new Date();
+    startDate.setDate(1); // normalize to first of month
+
+    const now2 = new Date();
+    const allMonths: { key: string; label: string }[] = [];
+    const cur2 = new Date(startDate);
+    while (cur2 <= now2) {
+      allMonths.push({
+        key:   `${cur2.getFullYear()}-${String(cur2.getMonth() + 1).padStart(2, "0")}`,
+        label: cur2.toLocaleString("default", { month: "short", year: "2-digit" }),
+      });
+      cur2.setMonth(cur2.getMonth() + 1);
+    }
+    // If no data yet, fall back to last 12 months
+    const monthRange = allMonths.length > 0 ? allMonths : Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
       return {
-        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
         label: d.toLocaleString("default", { month: "short", year: "2-digit" }),
       };
     });
 
-    const posLine = months.map(({ key, label }) => ({
-      month: label,
+    const posLine = monthRange.map(({ key, label }) => ({
+      month:     label,
       Positions: positions.filter(p => p.created_at?.startsWith(key)).length,
       Employees: employees.filter(e => e.created_at?.startsWith(key)).length,
     }));
 
-    // Running cumulative line (total growth)
-    let cumPos = 0, cumEmp = 0;
-    const growthLine = months.map(({ key, label }) => {
-      cumPos += positions.filter(p => p.created_at?.startsWith(key)).length;
-      cumEmp += employees.filter(e => e.created_at?.startsWith(key)).length;
-      return { month: label, "Total Positions": cumPos, "Total Employees": cumEmp };
-    });
-
     return {
       filled, vacant, active, inactive, suspended, terminated,
       fillRate, deptBar, levelBar, vacancyPie, statusPie,
-      deptSizePie, posLine, growthLine,
+      deptSizePie, posLine,
     };
   }, [departments, positions, employees]);
 
@@ -657,7 +666,7 @@ export default function AnalyticsDashboard() {
                   <div className="rounded-xl bg-cyan-100 dark:bg-slate-800 p-2"><Users className="h-4 w-4 text-cyan-600" /></div>
                 </div>
                 <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{headcountMetrics.total}</p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {employees.length - a.active} inactive</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {employees.length - a.active} exited/inactive</p>
                 <div className="mt-3 space-y-1.5">
                   <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
                     <span>♂ Male {headcountMetrics.malePct}%</span>
@@ -908,20 +917,29 @@ export default function AnalyticsDashboard() {
             </ChartCard>
           </div>
 
-          {/* ── Row 2: Line charts ── */}
-          <div className="grid gap-4 lg:grid-cols-2">
-
-            {/* Monthly additions */}
-            <ChartCard
-              title="Monthly Additions"
-              subtitle="New positions and employees created each month (last 6 months)"
-            >
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={a.posLine} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+          {/* ── Monthly Additions — full-width horizontal scroll ── */}
+          <ChartCard
+            title="Monthly Additions"
+            subtitle="New positions and employees created each month — scroll to see full history"
+          >
+            {/* Scrollable container */}
+            <div className="overflow-x-auto pb-2">
+              {/* Width = max(100%, months × 60px) so it scrolls when many months exist */}
+              <div style={{ minWidth: Math.max(a.posLine.length * 60, 600) }}>
+                <LineChart
+                  width={Math.max(a.posLine.length * 60, 600)}
+                  height={280}
+                  data={a.posLine}
+                  margin={{ top: 8, right: 24, left: 0, bottom: 8 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
                     className="dark:[&>line]:stroke-slate-700" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    interval={0}
+                  />
+                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} width={32} />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line type="monotone" dataKey="Positions" stroke={COLORS.indigo}
@@ -929,32 +947,9 @@ export default function AnalyticsDashboard() {
                   <Line type="monotone" dataKey="Employees" stroke={COLORS.emerald}
                     strokeWidth={2.5} dot={{ r: 4, fill: COLORS.emerald }} activeDot={{ r: 6 }} />
                 </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Cumulative growth */}
-            <ChartCard
-              title="Cumulative Growth"
-              subtitle="Running total of positions and employees over time"
-            >
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={a.growthLine} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
-                    className="dark:[&>line]:stroke-slate-700" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="Total Positions" stroke={COLORS.sky}
-                    strokeWidth={2.5} strokeDasharray="5 3"
-                    dot={{ r: 4, fill: COLORS.sky }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="Total Employees" stroke={COLORS.amber}
-                    strokeWidth={2.5} strokeDasharray="5 3"
-                    dot={{ r: 4, fill: COLORS.amber }} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
+              </div>
+            </div>
+          </ChartCard>
 
           {/* ── Row 3: Pie / Donut charts ── */}
           <div className="grid gap-4 lg:grid-cols-3">
@@ -1158,8 +1153,8 @@ export default function AnalyticsDashboard() {
                 </ChartCard>
               </div>
 
-              {/* Charts row 2 — Variance */}
-              <div className="grid gap-4 lg:grid-cols-2">
+              {/* Charts row 2 — Variance (full width) */}
+              <div className="grid gap-4">
 
                 {/* Variance bar — std_dev per department */}
                 <ChartCard title="Performance Variance by Department"
@@ -1202,80 +1197,6 @@ export default function AnalyticsDashboard() {
                   </div>
                 </ChartCard>
 
-                {/* Dept comparison table + insight */}
-                <ChartCard title="Department Performance Summary"
-                  subtitle="Avg, min, max and spread of ratings per department">
-                  {performanceMetrics.byDept.length > 0 ? (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-slate-100 dark:border-slate-800">
-                              {["Department","Reviews","Avg","Min","Max","σ"].map(h => (
-                                <th key={h} className="py-2 px-2 text-left font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {performanceMetrics.byDept.map((d: any, i: number) => {
-                              const isTop = i === 0;
-                              const isBot = i === performanceMetrics.byDept.length - 1 && performanceMetrics.byDept.length > 1;
-                              return (
-                                <tr key={d.department}
-                                  className={`${
-                                    isTop ? "bg-emerald-50 dark:bg-emerald-950/20" :
-                                    isBot ? "bg-rose-50 dark:bg-rose-950/20" : ""
-                                  }`}>
-                                  <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 max-w-[120px] truncate">
-                                    {isTop && <span className="mr-1">🥇</span>}
-                                    {isBot && <span className="mr-1">⚠️</span>}
-                                    {d.department}
-                                  </td>
-                                  <td className="py-2 px-2 text-center text-slate-600 dark:text-slate-400">{d.count}</td>
-                                  <td className="py-2 px-2 text-center font-bold" style={{ color:
-                                    d.avg_rating >= 4 ? COLORS.emerald :
-                                    d.avg_rating >= 3 ? COLORS.sky :
-                                    d.avg_rating >= 2 ? COLORS.amber : COLORS.rose }}>
-                                    {d.avg_rating.toFixed(1)}
-                                  </td>
-                                  <td className="py-2 px-2 text-center text-slate-500 dark:text-slate-400">{d.min_rating}</td>
-                                  <td className="py-2 px-2 text-center text-slate-500 dark:text-slate-400">{d.max_rating}</td>
-                                  <td className="py-2 px-2 text-center">
-                                    <span className={`font-semibold ${
-                                      d.std_dev >= 1.5 ? "text-rose-600 dark:text-rose-400" :
-                                      d.std_dev >= 0.8 ? "text-amber-600 dark:text-amber-400" :
-                                      "text-emerald-600 dark:text-emerald-400"}`}>
-                                      {d.std_dev.toFixed(2)}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Auto-generated insight */}
-                      <div className="mt-4 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/20 px-4 py-3">
-                        <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">📊 Performance Insight</p>
-                        <p className="text-[11px] text-indigo-600 dark:text-indigo-400 leading-relaxed">
-                          {performanceMetrics.gap && parseFloat(performanceMetrics.gap) > 0
-                            ? `${performanceMetrics.best?.department} leads with an average of ${performanceMetrics.best?.avg_rating}/5, while ${performanceMetrics.worst?.department} scores ${performanceMetrics.worst?.avg_rating}/5 — a ${performanceMetrics.gap}-point gap. ${
-                                parseFloat(performanceMetrics.gap) >= 2
-                                  ? "This significant variance warrants targeted coaching and structured support for underperforming departments."
-                                  : "Performance is relatively consistent across departments."
-                              }`
-                            : performanceMetrics.byDept.length === 1
-                              ? `Only ${performanceMetrics.byDept[0]?.department} has finalised reviews (avg ${performanceMetrics.byDept[0]?.avg_rating}/5). Extend reviews to all departments for a complete picture.`
-                              : "All departments show consistent performance. Continue current development initiatives."
-                          }
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="py-8 text-center text-sm text-slate-400">No finalised reviews yet.</p>
-                  )}
-                </ChartCard>
               </div>
             </>
           )}

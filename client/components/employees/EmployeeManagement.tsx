@@ -63,6 +63,13 @@ const STEPS = [
   { id: 5, label: "Education",    icon: GraduationCap,  desc: "Academic record" },
 ];
 
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE:     "Active",
+  INACTIVE:   "Exited",
+  SUSPENDED:  "Suspended",
+  TERMINATED: "Terminated",
+};
+
 const STATUS_COLORS: Record<EmployeeStatus, string> = {
   ACTIVE:     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   INACTIVE:   "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
@@ -470,7 +477,7 @@ export default function EmployeeManagement() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           <StatCard icon={Users}     label="Total"      value={stats.total}      color="bg-slate-500"   />
           <StatCard icon={UserCheck} label="Active"     value={stats.active}     color="bg-emerald-500" />
-          <StatCard icon={UserMinus} label="Inactive"   value={stats.inactive}   color="bg-slate-400"   />
+          <StatCard icon={UserMinus} label="Exited"     value={stats.inactive}   color="bg-slate-400"   />
           <StatCard icon={UserX}     label="Suspended"  value={stats.suspended}  color="bg-amber-500"   />
           <StatCard icon={UserX}     label="Terminated" value={stats.terminated} color="bg-red-500"     />
         </div>
@@ -485,7 +492,7 @@ export default function EmployeeManagement() {
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="field w-44">
           <option value="">All statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
         </select>
       </div>
 
@@ -537,7 +544,7 @@ export default function EmployeeManagement() {
                     <td className="px-5 py-3">
                       <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_COLORS[emp.status])}>
                         <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {emp.status.charAt(0) + emp.status.slice(1).toLowerCase()}
+                        {STATUS_LABELS[emp.status] ?? emp.status}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -670,7 +677,7 @@ export default function EmployeeManagement() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
                       <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
-                        {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+                        {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
                       </select>
                     </div>
                     <div className="sm:col-span-2">

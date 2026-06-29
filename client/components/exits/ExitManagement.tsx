@@ -377,6 +377,9 @@ export default function ExitManagement() {
                           <div>
                             <p className="font-medium text-slate-900 dark:text-slate-100">{ex.employee_name}</p>
                             <p className="text-xs text-slate-400">{ex.employee_email}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {ex.employee_status === "INACTIVE" ? "Exited" : ex.employee_status}
+                          </p>
                           </div>
                         </div>
                       </td>
