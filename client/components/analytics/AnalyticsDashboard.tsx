@@ -528,7 +528,10 @@ export default function AnalyticsDashboard() {
   // leaveUtilMetrics uses filteredLeaveEmps so must come after it
   const leaveUtilMetrics = useMemo(() => {
     if (!leaveSummary) return null;
-    const emps: any[] = filteredLeaveEmps.length > 0 ? filteredLeaveEmps : (leaveSummary.employees ?? []);
+    // Use filtered employees when dept filter is active, else all
+    const emps: any[] = leaveDeptFilter
+      ? filteredLeaveEmps
+      : (leaveSummary.employees ?? []);
     const totalEntitlement = emps.reduce((s: number, e: any) => s + (e.annual_entitlement ?? 0), 0);
     const annualUsed = emps.reduce((s: number, e: any) => {
       const approved = (e.records ?? []).filter((r: any) => r.status === "approved" && r.leave_type === "annual");
@@ -537,12 +540,16 @@ export default function AnalyticsDashboard() {
     const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
     const onLeave = leaveSummary.on_leave_now ?? 0;
     return { rate, annualUsed, totalEntitlement, onLeave };
-  }, [leaveSummary, filteredLeaveEmps]);
+  }, [leaveSummary, filteredLeaveEmps, leaveDeptFilter]);
 
   // Recompute leaveMetrics from filteredLeaveEmps
   const leaveMetrics = useMemo(() => {
     if (!leaveSummary?.employees?.length) return null;
-    const emps: any[] = filteredLeaveEmps.length > 0 ? filteredLeaveEmps : leaveSummary.employees;
+    // When a dept filter is active, use filtered employees;
+    // when no filter, use all employees. Never fall back to all when filter is set.
+    const emps: any[] = leaveDeptFilter
+      ? filteredLeaveEmps          // filtered — could be 0 or more
+      : leaveSummary.employees;   // no filter — use all
 
     // Totals per leave type
     const totals = { annual: 0, sick: 0, maternity: 0, paternity: 0, compassionate: 0 };
@@ -602,7 +609,7 @@ export default function AnalyticsDashboard() {
       perEmployee, avgUsed, fullyUsed, notUsed,
       totalEmployees: emps.length, totalEntitlement,
     };
-  }, [leaveSummary]);
+  }, [leaveSummary, filteredLeaveEmps, leaveDeptFilter]);
 
   const exitMetrics = useMemo(() => {
     if (!exitSummary) return null;
