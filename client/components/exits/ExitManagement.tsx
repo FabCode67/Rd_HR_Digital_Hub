@@ -325,7 +325,7 @@ export default function ExitManagement() {
         <select value={filterYear} onChange={e => setFilterYear(e.target.value ? Number(e.target.value) : "")}
           className="field w-28">
           <option value="">All years</option>
-          {[currentYear-1, currentYear, currentYear+1].map(y => <option key={y} value={y}>{y}</option>)}
+          {Array.from({ length: 2050 - 2010 + 1 }, (_, i) => 2010 + i).map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <select value={filterReason} onChange={e => setFilterReason(e.target.value)} className="field w-44">
           <option value="">All reasons</option>

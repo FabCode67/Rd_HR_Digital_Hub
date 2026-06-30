@@ -32,9 +32,9 @@ type FormState = {
   past_employer: string; past_position: string;
   // Step 3 — Position (assign on create)
   departmentId: string; positionId: string; startDate: string;
-  // Step 4 — Education (added post-create)
-  edu_institution: string; edu_degree: string; edu_field: string;
-  edu_start: string; edu_end: string; edu_grade: string;
+  // Step 5 — Education (added post-create)
+  edu_record_type: string; edu_title: string; edu_institution: string;
+  edu_field: string; edu_start: string; edu_end: string; edu_grade: string;
 };
 
 const STATUSES: EmployeeStatus[] = ["ACTIVE","INACTIVE","SUSPENDED","TERMINATED"];
@@ -50,8 +50,8 @@ const emptyForm: FormState = {
   employment_type: "permanent", contract_end_date: "",
   past_employer: "", past_position: "",
   departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10),
-  edu_institution: "", edu_degree: "", edu_field: "",
-  edu_start: "", edu_end: "", edu_grade: "",
+  edu_record_type: "degree", edu_title: "", edu_institution: "",
+  edu_field: "", edu_start: "", edu_end: "", edu_grade: "",
 };
 
 // Wizard steps
@@ -168,7 +168,18 @@ export default function EmployeeManagement() {
   const [editingId, setEditingId]   = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
-  const [createdEmpId, setCreatedEmpId] = useState<string | null>(null); // emp created at step 1
+  const [createdEmpId, setCreatedEmpId] = useState<string | null>(null);
+  // Step 5 — education list built before saving
+  type EduEntry = {
+    record_type: string; title: string; institution: string;
+    description: string; start_date: string; end_date: string; grade: string;
+    file?: File;
+  };
+  const emptyEdu: EduEntry = { record_type: "degree", title: "", institution: "", description: "", start_date: "", end_date: "", grade: "", file: undefined };
+  const [eduEntries, setEduEntries]   = useState<EduEntry[]>([]);
+  const [eduDraft,   setEduDraft]     = useState<EduEntry>({ ...emptyEdu });
+  const [eduFileErr, setEduFileErr]   = useState("");
+  const eduFileRef = useRef<HTMLInputElement>(null);
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
@@ -246,7 +257,8 @@ export default function EmployeeManagement() {
   const openNew = () => {
     setForm(emptyForm); setEditingId(null);
     setWizardStep(1); setCreatedEmpId(null);
-    setFormPositions([]); setDrawerOpen(true);
+    setFormPositions([]); setEduEntries([]); setEduDraft({ ...emptyEdu });
+    setDrawerOpen(true);
   };
   const openEdit = (e: Employee) => {
     setForm({
@@ -267,7 +279,7 @@ export default function EmployeeManagement() {
   const closeDrawer = () => {
     setDrawerOpen(false); setEditingId(null); setForm(emptyForm);
     setWizardStep(1); setCreatedEmpId(null); setAvatarEmployee(null);
-    setFormPositions([]);
+    setFormPositions([]); setEduEntries([]); setEduDraft({ ...emptyEdu });
   };
 
   // ── Step save handlers ──────────────────────────────────────────────────
@@ -340,22 +352,30 @@ export default function EmployeeManagement() {
 
   const saveEducation = async () => {
     const id = editingId || createdEmpId;
-    if (!id || !form.edu_institution.trim() || !form.edu_degree.trim()) {
-      // Just close if nothing to save
+    if (!id || eduEntries.length === 0) {
       toast.success("Complete", "Employee profile saved.");
       await load(); closeDrawer(); return;
     }
     setSaving(true);
     try {
-      await apiClient.education.create(id, {
-        institution: form.edu_institution.trim(),
-        degree: form.edu_degree.trim(),
-        field_of_study: form.edu_field.trim() || undefined,
-        start_date: form.edu_start || undefined,
-        end_date: form.edu_end || undefined,
-        grade: form.edu_grade.trim() || undefined,
-      });
-      toast.success("Complete", "Employee profile fully saved.");
+      for (const entry of eduEntries) {
+        const created = await apiClient.education.create(id, {
+          record_type:  entry.record_type,
+          title:        entry.title,
+          institution:  entry.institution  || undefined,
+          description:  entry.description  || undefined,
+          start_date:   entry.start_date   || undefined,
+          end_date:     entry.end_date     || undefined,
+          grade:        entry.grade        || undefined,
+        });
+        // Upload certificate if attached
+        if (entry.file && token) {
+          try {
+            await apiClient.education.uploadCertificate(created.id, entry.file, token);
+          } catch { /* non-critical */ }
+        }
+      }
+      toast.success("Complete", `${eduEntries.length} education record${eduEntries.length > 1 ? "s" : ""} saved.`);
       await load(); closeDrawer();
     } catch (err) {
       toast.error("Education save failed", err instanceof Error ? err.message : "Failed");
@@ -842,40 +862,140 @@ export default function EmployeeManagement() {
               {/* Step 5: Education */}
               {wizardStep === 5 && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <GraduationCap className="h-4 w-4 text-cyan-500" />
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Education &amp; Training</p>
                     <span className="text-xs text-slate-400">(optional)</span>
                   </div>
+
+                  {/* Added records list */}
+                  {eduEntries.length > 0 && (
+                    <div className="space-y-2">
+                      {eduEntries.map((entry, i) => (
+                        <div key={i} className="flex items-start justify-between gap-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{entry.title}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{entry.institution} {entry.grade ? `· ${entry.grade}` : ""}</p>
+                            {entry.file && (
+                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">📎 {entry.file.name}</p>
+                            )}
+                          </div>
+                          <button onClick={() => setEduEntries(list => list.filter((_, j) => j !== i))}
+                            className="shrink-0 rounded-lg p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Draft form for next entry */}
                   <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Add one education record. You can add more from the employee&#39;s Career tab later.</p>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      {eduEntries.length === 0 ? "Add education record" : "Add another record"}
+                    </p>
+
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Institution <span className="text-red-400">(required to save)</span></label>
-                        <input value={form.edu_institution} onChange={e => setForm(f => ({ ...f, edu_institution: e.target.value }))} className="field" placeholder="University of Rwanda" />
-                      </div>
+                      {/* Type */}
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Degree / Qualification</label>
-                        <input value={form.edu_degree} onChange={e => setForm(f => ({ ...f, edu_degree: e.target.value }))} className="field" placeholder="Bachelor of Science" />
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Type <span className="text-red-400">*</span></label>
+                        <select value={eduDraft.record_type} onChange={e => setEduDraft(d => ({ ...d, record_type: e.target.value }))} className="field">
+                          <option value="degree">Degree</option>
+                          <option value="certification">Certification</option>
+                          <option value="training">Training</option>
+                          <option value="course">Course</option>
+                        </select>
                       </div>
+                      {/* Title */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title / Qualification <span className="text-red-400">*</span></label>
+                        <input value={eduDraft.title} onChange={e => setEduDraft(d => ({ ...d, title: e.target.value }))} className="field" placeholder="e.g. BSc Computer Science" />
+                      </div>
+                      {/* Institution */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Institution</label>
+                        <input value={eduDraft.institution} onChange={e => setEduDraft(d => ({ ...d, institution: e.target.value }))} className="field" placeholder="University of Rwanda" />
+                      </div>
+                      {/* Field of study */}
                       <div>
                         <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Field of Study</label>
-                        <input value={form.edu_field} onChange={e => setForm(f => ({ ...f, edu_field: e.target.value }))} className="field" placeholder="Computer Science" />
+                        <input value={eduDraft.description} onChange={e => setEduDraft(d => ({ ...d, description: e.target.value }))} className="field" placeholder="Computer Science" />
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start Date</label>
-                        <input type="date" value={form.edu_start} onChange={e => setForm(f => ({ ...f, edu_start: e.target.value }))} className="field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">End Date / Expected</label>
-                        <input type="date" value={form.edu_end} onChange={e => setForm(f => ({ ...f, edu_end: e.target.value }))} className="field" />
-                      </div>
+                      {/* Grade */}
                       <div>
                         <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Grade / GPA</label>
-                        <input value={form.edu_grade} onChange={e => setForm(f => ({ ...f, edu_grade: e.target.value }))} className="field" placeholder="First Class / 3.8" />
+                        <input value={eduDraft.grade} onChange={e => setEduDraft(d => ({ ...d, grade: e.target.value }))} className="field" placeholder="First Class / 3.8" />
+                      </div>
+                      {/* Start date */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start Date</label>
+                        <input type="date" value={eduDraft.start_date} onChange={e => setEduDraft(d => ({ ...d, start_date: e.target.value }))} className="field" />
+                      </div>
+                      {/* End date */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">End Date / Expected</label>
+                        <input type="date" value={eduDraft.end_date} onChange={e => setEduDraft(d => ({ ...d, end_date: e.target.value }))} className="field" />
+                      </div>
+
+                      {/* Certificate upload */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
+                          Certificate <span className="font-normal text-slate-400">(PDF or image · optional)</span>
+                        </label>
+                        <button type="button" onClick={() => eduFileRef.current?.click()}
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-xl border-2 border-dashed px-4 py-2.5 text-left transition-colors",
+                            eduDraft.file
+                              ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/20"
+                              : "border-slate-300 dark:border-slate-600 hover:border-cyan-400 hover:bg-cyan-50/50"
+                          )}>
+                          {eduDraft.file ? (
+                            <>
+                              <BookOpen className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span className="flex-1 text-xs text-emerald-700 dark:text-emerald-300 truncate">{eduDraft.file.name}</span>
+                              <button type="button" onClick={e => { e.stopPropagation(); setEduDraft(d => ({ ...d, file: undefined })); if (eduFileRef.current) eduFileRef.current.value = ""; }}
+                                className="shrink-0 text-slate-400 hover:text-red-500">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <BookOpen className="h-4 w-4 text-slate-400 shrink-0" />
+                              <span className="text-xs text-slate-500">Click to attach certificate (PDF, JPG, PNG · max 10 MB)</span>
+                            </>
+                          )}
+                        </button>
+                        {eduFileErr && <p className="mt-1 text-xs text-red-500">{eduFileErr}</p>}
+                        <input ref={eduFileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            if (f.size > 10 * 1024 * 1024) { setEduFileErr("File must be under 10 MB"); return; }
+                            setEduFileErr("");
+                            setEduDraft(d => ({ ...d, file: f }));
+                          }} />
                       </div>
                     </div>
+
+                    {/* Add to list button */}
+                    <button
+                      type="button"
+                      disabled={!eduDraft.title.trim()}
+                      onClick={() => {
+                        if (!eduDraft.title.trim()) return;
+                        setEduEntries(list => [...list, { ...eduDraft }]);
+                        setEduDraft({ ...emptyEdu });
+                        setEduFileErr("");
+                        if (eduFileRef.current) eduFileRef.current.value = "";
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-cyan-300 dark:border-cyan-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-cyan-700 dark:text-cyan-300 hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full justify-center">
+                      <Plus className="h-4 w-4" /> Add Record
+                    </button>
                   </div>
+
+                  {eduEntries.length === 0 && (
+                    <p className="text-center text-xs text-slate-400">No records added yet — click "Add Record" above or skip this step.</p>
+                  )}
                 </div>
               )}
             </div>
@@ -962,10 +1082,10 @@ export default function EmployeeManagement() {
                     className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     Skip &amp; Finish
                   </button>
-                  <button onClick={saveEducation} disabled={saving || !form.edu_institution.trim()}
+                  <button onClick={saveEducation} disabled={saving}
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
                     {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                    <CheckCircle2 className="h-4 w-4" /> Save &amp; Finish
+                    <CheckCircle2 className="h-4 w-4" /> {eduEntries.length > 0 ? `Save ${eduEntries.length} Record${eduEntries.length > 1 ? "s" : ""} & Finish` : "Finish"}
                   </button>
                 </>
               )}
