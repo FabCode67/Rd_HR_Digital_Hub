@@ -362,7 +362,7 @@ export default function AnalyticsDashboard() {
     // Employee status pie
     const statusPie = [
       { name: "Active",     value: active,     fill: COLORS.emerald },
-      { name: "Inactive",   value: inactive,   fill: COLORS.amber },
+      { name: "Exited",     value: inactive,   fill: COLORS.amber },
       { name: "Suspended",  value: suspended,  fill: COLORS.orange },
       { name: "Terminated", value: terminated, fill: COLORS.rose },
     ].filter(d => d.value > 0);
@@ -978,35 +978,80 @@ export default function AnalyticsDashboard() {
           {/* ── Monthly Additions — full-width horizontal scroll ── */}
           <ChartCard
             title="Monthly Additions"
-            subtitle="New positions and employees created each month — scroll to see full history"
+            subtitle={`New positions and employees created each month · ${a.posLine.length} month${a.posLine.length !== 1 ? "s" : ""} of history — scroll to explore`}
           >
-            {/* Scrollable container */}
-            <div className="overflow-x-auto pb-2">
-              {/* Width = max(100%, months × 60px) so it scrolls when many months exist */}
-              <div style={{ minWidth: Math.max(a.posLine.length * 60, 600) }}>
-                <LineChart
-                  width={Math.max(a.posLine.length * 60, 600)}
-                  height={280}
-                  data={a.posLine}
-                  margin={{ top: 8, right: 24, left: 0, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
-                    className="dark:[&>line]:stroke-slate-700" />
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    interval={0}
-                  />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} width={32} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="Positions" stroke={COLORS.indigo}
-                    strokeWidth={2.5} dot={{ r: 4, fill: COLORS.indigo }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="Employees" stroke={COLORS.emerald}
-                    strokeWidth={2.5} dot={{ r: 4, fill: COLORS.emerald }} activeDot={{ r: 6 }} />
-                </LineChart>
+            {a.posLine.length <= 1 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <TrendingUp className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-3" />
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Not enough history yet</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  This chart fills in as positions and employees are added over time — each month becomes its own data point.
+                  Currently showing <strong>{a.posLine[0]?.month}</strong> with {a.posLine[0]?.Positions ?? 0} positions and {a.posLine[0]?.Employees ?? 0} employees.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="overflow-x-auto pb-2">
+                <div style={{ minWidth: Math.max(a.posLine.length * 70, 700) }}>
+                  <ResponsiveContainer width="100%" height={300} minWidth={Math.max(a.posLine.length * 70, 700)}>
+                    <LineChart
+                      data={a.posLine}
+                      margin={{ top: 12, right: 24, left: 0, bottom: 8 }}
+                    >
+                      <defs>
+                        <linearGradient id="posGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={COLORS.indigo} stopOpacity={0.25} />
+                          <stop offset="95%" stopColor={COLORS.indigo} stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="empGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={COLORS.emerald} stopOpacity={0.25} />
+                          <stop offset="95%" stopColor={COLORS.emerald} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"
+                        className="dark:[&>line]:stroke-slate-700" />
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fontSize: 11, fill: "#94a3b8" }}
+                        interval={0}
+                        angle={a.posLine.length > 18 ? -35 : 0}
+                        textAnchor={a.posLine.length > 18 ? "end" : "middle"}
+                        height={a.posLine.length > 18 ? 50 : 30}
+                      />
+                      <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} width={32} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line type="monotone" dataKey="Positions" stroke={COLORS.indigo}
+                        strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.indigo }} activeDot={{ r: 6 }}
+                        fill="url(#posGrad)" />
+                      <Line type="monotone" dataKey="Employees" stroke={COLORS.emerald}
+                        strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.emerald }} activeDot={{ r: 6 }}
+                        fill="url(#empGrad)" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+            {/* Quick stats footer */}
+            {a.posLine.length > 0 && (() => {
+              const totalPos = a.posLine.reduce((s, m) => s + m.Positions, 0);
+              const totalEmp = a.posLine.reduce((s, m) => s + m.Employees, 0);
+              const peakMonth = [...a.posLine].sort((x, y) => (y.Positions + y.Employees) - (x.Positions + x.Employees))[0];
+              return (
+                <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                  <span className="rounded-full bg-indigo-50 dark:bg-indigo-950/30 px-3 py-1 text-indigo-700 dark:text-indigo-300 font-medium">
+                    {totalPos} positions added total
+                  </span>
+                  <span className="rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 text-emerald-700 dark:text-emerald-300 font-medium">
+                    {totalEmp} employees added total
+                  </span>
+                  {peakMonth && (peakMonth.Positions + peakMonth.Employees) > 0 && (
+                    <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-slate-600 dark:text-slate-400 font-medium">
+                      Peak month: {peakMonth.month}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </ChartCard>
 
           {/* ── Row 3: Pie / Donut charts ── */}
