@@ -364,8 +364,8 @@ export default function EmployeeManagement() {
           title:        entry.title,
           institution:  entry.institution  || undefined,
           description:  entry.description  || undefined,
-          start_date:   entry.start_date   || undefined,
-          end_date:     entry.end_date     || undefined,
+          start_date:   entry.start_date   ? toISO(entry.start_date) : undefined,
+          end_date:     entry.end_date     ? toISO(entry.end_date)   : undefined,
           grade:        entry.grade        || undefined,
         });
         // Upload certificate if attached
