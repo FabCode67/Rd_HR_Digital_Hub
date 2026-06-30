@@ -269,8 +269,8 @@ export default function EmployeeManagement() {
       contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
       past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
       departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10),
-      edu_institution: "", edu_degree: "", edu_field: "",
-      edu_start: "", edu_end: "", edu_grade: "",
+      edu_record_type: "degree", edu_title: "", edu_institution: "",
+      edu_field: "", edu_start: "", edu_end: "", edu_grade: "",
     });
     setAvatarEmployee(e);
     setEditingId(e.id); setWizardStep(1); setCreatedEmpId(e.id);
