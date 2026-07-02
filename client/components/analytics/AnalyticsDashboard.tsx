@@ -547,22 +547,36 @@ export default function AnalyticsDashboard() {
   }, [departments, filteredPositions, filteredEmployees, positions, employees, isFiltered]);
 
   const attritionMetrics = useMemo(() => {
-    // Attrition here is derived from Employee.status (INACTIVE + SUSPENDED +
-    // TERMINATED) rather than the formal EmployeeExit table, so it matches
-    // the "not active" count on the Staff Headcount card exactly — including
-    // status changes made outside the "Process Exit" workflow.
-    const notActive = a.inactive + a.suspended + a.terminated;
-    const avgHeadcount = turnoverData?.avg_headcount || Math.max(filteredEmployees.length, 1);
-    const rate      = Math.round((notActive / avgHeadcount) * 1000) / 10;
+    // Don't use filteredEmployees here — it's scoped by Employee.created_at,
+    // which for bulk-seeded/migrated data rarely falls inside a historical
+    // range even when the person was genuinely employed (and exited) during
+    // that period. Instead, resolve each non-active employee's real exit
+    // date from the exit records (same source Exit Analysis already uses
+    // correctly) and filter by *that* date.
+    const exitDateByEmployee = new Map<string, string>();
+    (exitSummary?.exits ?? []).forEach((ex: any) => {
+      if (ex.employee_id && ex.exit_date) exitDateByEmployee.set(ex.employee_id, ex.exit_date);
+    });
+
+    const notActiveEmployees = employees.filter((e: any) => e.status !== "ACTIVE");
+    const notActiveInRange = isFiltered
+      ? notActiveEmployees.filter((e: any) => {
+          const exitDate = exitDateByEmployee.get((e as any).id);
+          return exitDate ? inRange(exitDate) : false; // no exit record → can't place in time, excluded from a specific range
+        })
+      : notActiveEmployees;
+
+    const avgHeadcount = turnoverData?.avg_headcount || Math.max(employees.length, 1);
+    const rate      = Math.round((notActiveInRange.length / avgHeadcount) * 1000) / 10;
     const retention = Math.round((100 - rate) * 10) / 10;
     return {
       rate,
       retention,
-      exits:     notActive,
+      exits:     notActiveInRange.length,
       voluntary: turnoverData?.voluntary_exits ?? null,
       yoy:       turnoverData?.yoy_change ?? null,
     };
-  }, [a, turnoverData, filteredEmployees.length]);
+  }, [employees, exitSummary, isFiltered, inRange, turnoverData]);
 
   const performanceMetrics = useMemo(() => {
     // Shadow with the date-filtered version so the rest of this function
