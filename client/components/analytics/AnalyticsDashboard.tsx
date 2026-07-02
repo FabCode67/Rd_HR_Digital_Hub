@@ -1007,7 +1007,17 @@ export default function AnalyticsDashboard() {
                   <div className="rounded-xl bg-cyan-100 dark:bg-slate-800 p-2"><Users className="h-4 w-4 text-cyan-600" /></div>
                 </div>
                 <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{headcountMetrics.total}</p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {filteredEmployees.length - a.active} exited/inactive</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {filteredEmployees.length - a.active} not active</p>
+                {(a.inactive + a.suspended + a.terminated) > 0 && (
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    {[
+                      a.inactive    > 0 ? `${a.inactive} exited` : null,
+                      a.suspended   > 0 ? `${a.suspended} suspended` : null,
+                      a.terminated  > 0 ? `${a.terminated} terminated` : null,
+                    ].filter(Boolean).join(" · ")}
+                    <span className="italic"> — status field, not tied to formal Exit records</span>
+                  </p>
+                )}
                 <div className="mt-3 space-y-1.5">
                   <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
                     <span>♂ Male {headcountMetrics.malePct}%</span>
@@ -1109,6 +1119,11 @@ export default function AnalyticsDashboard() {
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {attritionMetrics ? `${attritionMetrics.exits} exits · ${attritionMetrics.retention}% retained` : "Loading…"}
                 </p>
+                {attritionMetrics && (
+                  <p className="mt-0.5 text-[10px] text-slate-400 italic">
+                    From formal Exit records only — may be lower than “not active” count above if any status changes skipped the Exit workflow
+                  </p>
+                )}
                 {attritionMetrics && (
                   <div className="mt-3 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
