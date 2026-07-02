@@ -1,4 +1,9 @@
-"use client";
+import { redirect } from "next/navigation";
+
+// Staff Management removed — redirect to Employees
+export default function StaffPage() {
+  redirect("/dashboard/employees");
+}"use client";
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";

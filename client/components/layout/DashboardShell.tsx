@@ -47,7 +47,6 @@ const baseNavItems = [
 
 const adminNavItems = [
   { href: "/dashboard/forms", label: "Forms", icon: ListChecks },
-  { href: "/dashboard/staff", label: "Staff Management", icon: Users },
 ]
 
 export default function DashboardShell({ children }: DashboardShellProps) {
