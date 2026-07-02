@@ -2043,7 +2043,7 @@ export default function AnalyticsDashboard() {
                 {/* Monthly insight */}
                 {(() => {
                   const peakMonth = [...turnoverData.monthly].sort((a: any, b: any) => b.exits - a.exits)[0];
-                  if (peakMonth?.exits === 0) return null;
+                  if (!peakMonth || peakMonth.exits === 0) return null;
                   return (
                     <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
                       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">📊 Monthly Insight</p>
