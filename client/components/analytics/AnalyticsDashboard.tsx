@@ -174,6 +174,7 @@ export default function AnalyticsDashboard() {
   const [exitSummary, setExitSummary]               = useState<any>(null);
   const [turnoverData, setTurnoverData]               = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
+  const [secondaryLoading, setSecondaryLoading] = useState(false); // leave/performance/turnover refetch
   const [error,       setError]       = useState<string | null>(null);
   const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
   const [showExportBuilder, setShowExportBuilder] = useState(false);
@@ -226,11 +227,84 @@ export default function AnalyticsDashboard() {
     return { ...leaveSummary, employees };
   }, [leaveSummary, isFiltered, inRange]);
 
+  // Filter performance reviews within range — recomputes rating distribution
+  // and department variance client-side (mirrors the server's own math) so
+  // the Performance Analytics charts track the exact date window, not just
+  // whichever whole year the API happened to fetch.
+  const filteredPerformanceSummary = useMemo(() => {
+    if (!performanceSummary) return performanceSummary;
+    if (!isFiltered) return performanceSummary;
+
+    const employees = (performanceSummary.employees ?? []).map((e: any) => ({
+      ...e,
+      reviews: (e.reviews ?? []).filter((r: any) => inRange(r.reviewed_at || r.created_at)),
+    }));
+
+    const finalised = employees.flatMap((e: any) =>
+      (e.reviews ?? []).filter((r: any) => !r.is_draft)
+    );
+
+    const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    finalised.forEach((r: any) => { dist[r.rating] = (dist[r.rating] ?? 0) + 1; });
+
+    const byDeptMap = new Map<string, number[]>();
+    employees.forEach((e: any) => {
+      const dept = e.department || "Unknown";
+      (e.reviews ?? []).filter((r: any) => !r.is_draft).forEach((r: any) => {
+        if (!byDeptMap.has(dept)) byDeptMap.set(dept, []);
+        byDeptMap.get(dept)!.push(r.rating);
+      });
+    });
+    const by_department = [...byDeptMap.entries()]
+      .filter(([, ratings]) => ratings.length > 0)
+      .map(([department, ratings]) => {
+        const n   = ratings.length;
+        const avg = ratings.reduce((a, b) => a + b, 0) / n;
+        const variance = n > 1 ? ratings.reduce((s, r) => s + (r - avg) ** 2, 0) / n : 0;
+        return {
+          department, count: n,
+          avg_rating: Math.round(avg * 100) / 100,
+          min_rating: Math.min(...ratings),
+          max_rating: Math.max(...ratings),
+          variance:   Math.round(variance * 1000) / 1000,
+          std_dev:    Math.round(Math.sqrt(variance) * 1000) / 1000,
+          spread:     Math.max(...ratings) - Math.min(...ratings),
+        };
+      })
+      .sort((a, b) => b.avg_rating - a.avg_rating);
+
+    const reviewed = employees.filter((e: any) => (e.reviews ?? []).length > 0).length;
+    const avg_rating = finalised.length
+      ? Math.round((finalised.reduce((s: number, r: any) => s + r.rating, 0) / finalised.length) * 100) / 100
+      : null;
+
+    return {
+      ...performanceSummary,
+      employees,
+      reviewed,
+      pending: employees.length - reviewed,
+      average_rating: avg_rating,
+      rating_distribution: dist,
+      by_department,
+    };
+  }, [performanceSummary, isFiltered, inRange]);
+
   const dateRangeLabel = useMemo(() => {
     if (!dateFrom && !dateTo) return "All time";
     if (dateFrom && dateTo)   return `${dateFrom} → ${dateTo}`;
     if (dateFrom)             return `From ${dateFrom}`;
     return `Up to ${dateTo}`;
+  }, [dateFrom, dateTo]);
+
+  // Backend leave/performance/turnover endpoints are scoped to a single
+  // `year`, not an arbitrary from–to range. Derive the most relevant year
+  // from the active filter so those network calls (and therefore the charts
+  // fed by them) actually track what the user picked, instead of always
+  // requesting the current year.
+  const filterYear = useMemo(() => {
+    if (dateTo)   return new Date(dateTo).getFullYear();
+    if (dateFrom) return new Date(dateFrom).getFullYear();
+    return new Date().getFullYear();
   }, [dateFrom, dateTo]);
 
   // ── Export section config ──────────────────────────────────────────────────
@@ -275,6 +349,8 @@ export default function AnalyticsDashboard() {
   const [statusActive,    setStatusActive]    = useState(0);
   const [deptActive,      setDeptActive]      = useState(0);
 
+  // Core org data — loaded once. Employees/positions are filtered client-side
+  // (see filteredEmployees above), so this never needs to refetch on date change.
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -290,21 +366,6 @@ export default function AnalyticsDashboard() {
         if (!mounted) return;
         setDepartments(depts); setPositions(pos); setEmployees(emps);
         setPositionTree(tree); setEmpDeptMap(deptMap);
-        // Set loading false immediately after core data — secondary data loads in background
-        if (mounted) setLoading(false);
-        // Load leave + performance summaries in parallel (non-critical, background)
-        Promise.allSettled([
-          apiClient.leave.getSummary(new Date().getFullYear()),
-          apiClient.performance.getSummary(new Date().getFullYear()),
-          apiClient.exits.list(),
-          apiClient.exits.getTurnover(new Date().getFullYear()),
-        ]).then(([leaveResult, perfResult, exitResult, turnoverResult]) => {
-          if (!mounted) return;
-          if (leaveResult.status    === "fulfilled") setLeaveSummary(leaveResult.value);
-          if (perfResult.status     === "fulfilled") setPerformanceSummary(perfResult.value);
-          if (exitResult.status     === "fulfilled") setExitSummary(exitResult.value);
-          if (turnoverResult.status === "fulfilled") setTurnoverData(turnoverResult.value);
-        });
       } catch (err) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : "Failed to load analytics");
@@ -315,6 +376,31 @@ export default function AnalyticsDashboard() {
     void load();
     return () => { mounted = false; };
   }, []);
+
+  // Leave / performance / turnover are year-scoped on the backend, so this
+  // effect re-runs whenever the date filter's target year changes — this is
+  // what makes the /leave/summary, /performance/summary and /exits/turnover
+  // requests actually follow the picker instead of always hitting the
+  // current year. `exits.list()` is unscoped and already filtered precisely
+  // client-side via filteredExitSummary, so it's refetched here too just to
+  // keep everything in this group refreshing together.
+  useEffect(() => {
+    let mounted = true;
+    setSecondaryLoading(true);
+    Promise.allSettled([
+      apiClient.leave.getSummary(filterYear),
+      apiClient.performance.getSummary(filterYear),
+      apiClient.exits.list(),
+      apiClient.exits.getTurnover(filterYear),
+    ]).then(([leaveResult, perfResult, exitResult, turnoverResult]) => {
+      if (!mounted) return;
+      if (leaveResult.status    === "fulfilled") setLeaveSummary(leaveResult.value);
+      if (perfResult.status     === "fulfilled") setPerformanceSummary(perfResult.value);
+      if (exitResult.status     === "fulfilled") setExitSummary(exitResult.value);
+      if (turnoverResult.status === "fulfilled") setTurnoverData(turnoverResult.value);
+    }).finally(() => { if (mounted) setSecondaryLoading(false); });
+    return () => { mounted = false; };
+  }, [filterYear]);
 
   // ── Derived KPI metrics ────────────────────────────────────────────────────
   const headcountMetrics = useMemo(() => {
@@ -472,6 +558,9 @@ export default function AnalyticsDashboard() {
   }, [departments, filteredPositions, filteredEmployees, positions, employees, isFiltered]);
 
   const performanceMetrics = useMemo(() => {
+    // Shadow with the date-filtered version so the rest of this function
+    // (unchanged below) automatically tracks the global date filter.
+    const performanceSummary = filteredPerformanceSummary;
     if (!performanceSummary) return null;
     const byDept: any[] = performanceSummary.by_department ?? [];
     const dist: Record<number,number> = performanceSummary.rating_distribution ?? {};
@@ -537,7 +626,7 @@ export default function AnalyticsDashboard() {
       reviewed:  performanceSummary.reviewed,
       pending:   performanceSummary.pending,
     };
-  }, [performanceSummary]);
+  }, [filteredPerformanceSummary]);
 
   const [leaveDeptFilter, setLeaveDeptFilter] = useState<string>(""); // dept id or ""
 
@@ -681,6 +770,71 @@ export default function AnalyticsDashboard() {
     return { exits, byDept, byReason, regrettable, nonRegrettable, total: filteredExitSummary.total ?? 0 };
   }, [filteredExitSummary]);
 
+  // Turnover & Retention, recomputed from the *exactly* date-filtered exit
+  // list (filteredExitSummary, which is unscoped by year and already filters
+  // precisely by exit_date) rather than the year-locked /exits/turnover
+  // endpoint. Rates still borrow the headcount baseline from that endpoint
+  // since the app doesn't track historical headcount snapshots per date —
+  // that would need a schema change to compute exactly for an arbitrary range.
+  const filteredTurnoverData = useMemo(() => {
+    if (!turnoverData) return null;
+    if (!isFiltered)   return turnoverData;
+
+    const exits: any[] = filteredExitSummary?.exits ?? [];
+    const voluntary_exits   = exits.filter((e: any) => e.exit_reason === "resignation").length;
+    const involuntary_exits = exits.length - voluntary_exits;
+
+    const byMonth = new Map<string, { month_label: string; resignations: number; terminations: number; end_of_contract: number; exits: number; regrettable: number }>();
+    exits.forEach((e: any) => {
+      if (!e.exit_date) return;
+      const d = new Date(e.exit_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = byMonth.get(key) ?? {
+        month_label: d.toLocaleString("default", { month: "short", year: "2-digit" }),
+        resignations: 0, terminations: 0, end_of_contract: 0, exits: 0, regrettable: 0,
+      };
+      cur.exits++;
+      if (e.exit_reason === "resignation")     cur.resignations++;
+      if (e.exit_reason === "termination")     cur.terminations++;
+      if (e.exit_reason === "end_of_contract") cur.end_of_contract++;
+      if (e.exit_type   === "regrettable")     cur.regrettable++;
+      byMonth.set(key, cur);
+    });
+    const monthly = [...byMonth.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, m]) => m);
+
+    const deptMap = new Map<string, number>();
+    exits.forEach((e: any) => {
+      const d = e.department_name || "Unknown";
+      deptMap.set(d, (deptMap.get(d) ?? 0) + 1);
+    });
+    const by_department = [...deptMap.entries()]
+      .map(([department, n]) => {
+        const deptObj = departments.find(dep => dep.name === department);
+        const positionsInDept = deptObj ? positions.filter(p => p.department_id === deptObj.id).length : 1;
+        return {
+          department, exits: n,
+          positions: Math.max(positionsInDept, 1),
+          rate: Math.round((n / Math.max(positionsInDept, 1)) * 1000) / 10,
+        };
+      })
+      .sort((a, b) => b.exits - a.exits);
+
+    const avg_headcount  = turnoverData.avg_headcount || Math.max(filteredEmployees.length, 1);
+    const turnover_rate  = Math.round((exits.length / avg_headcount) * 1000) / 10;
+    const retention_rate = Math.round((100 - turnover_rate) * 10) / 10;
+    const voluntary_rate = Math.round((voluntary_exits / avg_headcount) * 1000) / 10;
+
+    return {
+      ...turnoverData,
+      exits_this_year: exits.length,
+      voluntary_exits, involuntary_exits, voluntary_rate,
+      turnover_rate, retention_rate,
+      monthly, by_department,
+    };
+  }, [turnoverData, filteredExitSummary, isFiltered, departments, positions, filteredEmployees.length]);
+
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
     departments, positions, employees, leaveSummary, performanceSummary, turnoverData, exitSummary, metrics: a,
@@ -772,6 +926,11 @@ export default function AnalyticsDashboard() {
             <div className="flex items-center gap-2 shrink-0">
               <CalendarRange className="h-4 w-4 text-cyan-500" />
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Filter Period</span>
+              {secondaryLoading && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-500">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Refreshing leave / performance / turnover…
+                </span>
+              )}
             </div>
             <div className="flex flex-1 flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
@@ -985,6 +1144,7 @@ export default function AnalyticsDashboard() {
                 </div>
                 <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{pct(a.fillRate)}</p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.filled} of {positions.length} positions filled</p>
+                <p className="mt-0.5 text-[10px] text-slate-400 italic">Current org structure — not affected by the date filter</p>
                 <div className="mt-3 space-y-2">
                   <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                     <div className={`h-full rounded-full transition-all ${
@@ -1672,7 +1832,12 @@ export default function AnalyticsDashboard() {
           )}
 
           {/* ── Turnover & Retention Analysis ── */}
-          {turnoverData && (
+          {/* IIFE shadows `turnoverData` with the date-filtered version below,
+              so every reference inside this block tracks the filter without
+              having to touch each usage individually. */}
+          {turnoverData && (() => {
+            const turnoverData = filteredTurnoverData as any;
+            return (
             <>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -1895,7 +2060,8 @@ export default function AnalyticsDashboard() {
                 })()}
               </ChartCard>
             </>
-          )}
+            );
+          })()}
 
           {/* ── Exit Analysis ── */}
           {exitMetrics && exitMetrics.total > 0 && (
