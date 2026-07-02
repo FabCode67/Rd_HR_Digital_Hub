@@ -443,17 +443,6 @@ export default function AnalyticsDashboard() {
     return { lower, mid, upper, spec, total: withBand.length, lowerPct };
   }, [filteredPositions]);
 
-  const attritionMetrics = useMemo(() => {
-    if (!turnoverData) return null;
-    return {
-      rate:      turnoverData.turnover_rate,
-      retention: turnoverData.retention_rate,
-      exits:     turnoverData.exits_this_year,
-      voluntary: turnoverData.voluntary_exits,
-      yoy:       turnoverData.yoy_change,
-    };
-  }, [turnoverData]);
-
   // leaveUtilMetrics declared after filteredLeaveEmps below
 
   const a = useMemo(() => {
@@ -556,6 +545,24 @@ export default function AnalyticsDashboard() {
       deptSizePie, posLine,
     };
   }, [departments, filteredPositions, filteredEmployees, positions, employees, isFiltered]);
+
+  const attritionMetrics = useMemo(() => {
+    // Attrition here is derived from Employee.status (INACTIVE + SUSPENDED +
+    // TERMINATED) rather than the formal EmployeeExit table, so it matches
+    // the "not active" count on the Staff Headcount card exactly — including
+    // status changes made outside the "Process Exit" workflow.
+    const notActive = a.inactive + a.suspended + a.terminated;
+    const avgHeadcount = turnoverData?.avg_headcount || Math.max(filteredEmployees.length, 1);
+    const rate      = Math.round((notActive / avgHeadcount) * 1000) / 10;
+    const retention = Math.round((100 - rate) * 10) / 10;
+    return {
+      rate,
+      retention,
+      exits:     notActive,
+      voluntary: turnoverData?.voluntary_exits ?? null,
+      yoy:       turnoverData?.yoy_change ?? null,
+    };
+  }, [a, turnoverData, filteredEmployees.length]);
 
   const performanceMetrics = useMemo(() => {
     // Shadow with the date-filtered version so the rest of this function
@@ -1119,11 +1126,6 @@ export default function AnalyticsDashboard() {
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {attritionMetrics ? `${attritionMetrics.exits} exits · ${attritionMetrics.retention}% retained` : "Loading…"}
                 </p>
-                {attritionMetrics && (
-                  <p className="mt-0.5 text-[10px] text-slate-400 italic">
-                    From formal Exit records only — may be lower than “not active” count above if any status changes skipped the Exit workflow
-                  </p>
-                )}
                 {attritionMetrics && (
                   <div className="mt-3 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
