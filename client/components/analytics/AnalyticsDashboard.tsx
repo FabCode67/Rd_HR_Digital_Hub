@@ -8,6 +8,7 @@ import {
   BadgeCheck, TrendingUp, AlertCircle,
   FileSpreadsheet, Presentation, Download,
   Settings2, X, CheckSquare, Square, ChevronDown, ChevronUp,
+  CalendarRange, RotateCcw,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -177,6 +178,61 @@ export default function AnalyticsDashboard() {
   const [exporting,   setExporting]   = useState<"excel"|"pptx"|null>(null);
   const [showExportBuilder, setShowExportBuilder] = useState(false);
 
+  // ── Global date range filter ───────────────────────────────────────────────
+  const [dateFrom, setDateFrom] = useState("");  // e.g. "2024-01-01"
+  const [dateTo,   setDateTo]   = useState("");  // e.g. "2025-01-01"
+  const isFiltered = !!(dateFrom || dateTo);
+
+  const inRange = useCallback((dateStr: string | null | undefined): boolean => {
+    if (!dateStr) return true; // no date = always include
+    const d = dateStr.slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    return true;
+  }, [dateFrom, dateTo]);
+
+  // Date-filtered employees (by created_at / hire date)
+  const filteredEmployees = useMemo(
+    () => isFiltered ? employees.filter(e => inRange((e as any).created_at)) : employees,
+    [employees, inRange, isFiltered]
+  );
+
+  // Positions are NEVER filtered by date — they represent current org structure.
+  // Fill rate always shows current state of all positions.
+  const filteredPositions = positions;
+
+  // Filter exit records by exit_date within range
+  const filteredExitSummary = useMemo(() => {
+    if (!exitSummary || !isFiltered) return exitSummary;
+    const exits = (exitSummary.exits ?? []).filter((e: any) => inRange(e.exit_date));
+    const by_reason: Record<string,number> = {};
+    const by_type:   Record<string,number> = {};
+    const by_dept:   Record<string,number> = {};
+    exits.forEach((e: any) => {
+      if (e.exit_reason) by_reason[e.exit_reason] = (by_reason[e.exit_reason] ?? 0) + 1;
+      if (e.exit_type)   by_type[e.exit_type]     = (by_type[e.exit_type]     ?? 0) + 1;
+      if (e.department_name) by_dept[e.department_name] = (by_dept[e.department_name] ?? 0) + 1;
+    });
+    return { ...exitSummary, exits, total: exits.length, by_reason, by_type, by_department: by_dept };
+  }, [exitSummary, isFiltered, inRange]);
+
+  // Filter leave records within range
+  const filteredLeaveSummary = useMemo(() => {
+    if (!leaveSummary || !isFiltered) return leaveSummary;
+    const employees = (leaveSummary.employees ?? []).map((e: any) => ({
+      ...e,
+      records: (e.records ?? []).filter((r: any) => inRange(r.start_date)),
+    }));
+    return { ...leaveSummary, employees };
+  }, [leaveSummary, isFiltered, inRange]);
+
+  const dateRangeLabel = useMemo(() => {
+    if (!dateFrom && !dateTo) return "All time";
+    if (dateFrom && dateTo)   return `${dateFrom} → ${dateTo}`;
+    if (dateFrom)             return `From ${dateFrom}`;
+    return `Up to ${dateTo}`;
+  }, [dateFrom, dateTo]);
+
   // ── Export section config ──────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0,10);
   const yearStart = `${new Date().getFullYear()}-01-01`;
@@ -262,18 +318,18 @@ export default function AnalyticsDashboard() {
 
   // ── Derived KPI metrics ────────────────────────────────────────────────────
   const headcountMetrics = useMemo(() => {
-    const total  = employees.length;
-    const male   = employees.filter((e: any) => e.gender === "male").length;
-    const female = employees.filter((e: any) => e.gender === "female").length;
+    const total  = filteredEmployees.length;
+    const male   = filteredEmployees.filter((e: any) => e.gender === "male").length;
+    const female = filteredEmployees.filter((e: any) => e.gender === "female").length;
     const none   = total - male - female;
     const malePct   = total > 0 ? Math.round((male   / total) * 100) : 0;
     const femalePct = total > 0 ? Math.round((female / total) * 100) : 0;
     return { total, male, female, none, malePct, femalePct };
-  }, [employees]);
+  }, [filteredEmployees]);
 
   const avgAgeMetrics = useMemo(() => {
     const now = new Date();
-    const ages = employees
+    const ages = filteredEmployees
       .filter((e: any) => e.date_of_birth)
       .map((e: any) => {
         const dob = new Date(e.date_of_birth);
@@ -284,15 +340,14 @@ export default function AnalyticsDashboard() {
     const min = ages.length > 0 ? Math.min(...ages) : 0;
     const max = ages.length > 0 ? Math.max(...ages) : 0;
     return { avg, min, max, count: ages.length };
-  }, [employees]);
+  }, [filteredEmployees]);
 
   const bandMetrics = useMemo(() => {
-    // Count filled positions by band group
     const LOWER  = ["B1","B2","B3","B4"];
     const MID    = ["B5","B6","B7"];
     const UPPER  = ["B8","B9","B10"];
     const SPEC   = ["DSA","GT","Intern"];
-    const withBand = positions.filter(p => p.band);
+    const withBand = filteredPositions.filter(p => p.band);
     const total    = withBand.length || 1;
     const lower  = withBand.filter(p => LOWER.includes(p.band ?? "")).length;
     const mid    = withBand.filter(p => MID.includes(p.band ?? "")).length;
@@ -300,7 +355,7 @@ export default function AnalyticsDashboard() {
     const spec   = withBand.filter(p => SPEC.includes(p.band ?? "")).length;
     const lowerPct = Math.round((lower / total) * 100);
     return { lower, mid, upper, spec, total: withBand.length, lowerPct };
-  }, [positions]);
+  }, [filteredPositions]);
 
   const attritionMetrics = useMemo(() => {
     if (!turnoverData) return null;
@@ -316,17 +371,17 @@ export default function AnalyticsDashboard() {
   // leaveUtilMetrics declared after filteredLeaveEmps below
 
   const a = useMemo(() => {
-    const filled   = positions.filter(p => !p.is_vacant).length;
-    const vacant   = positions.filter(p =>  p.is_vacant).length;
-    const active   = employees.filter(e => e.status === "ACTIVE").length;
-    const inactive = employees.filter(e => e.status === "INACTIVE").length;
-    const suspended= employees.filter(e => e.status === "SUSPENDED").length;
-    const terminated=employees.filter(e => e.status === "TERMINATED").length;
-    const fillRate = positions.length > 0 ? (filled / positions.length) * 100 : 0;
+    const filled   = filteredPositions.filter(p => !p.is_vacant).length;
+    const vacant   = filteredPositions.filter(p =>  p.is_vacant).length;
+    const active   = filteredEmployees.filter(e => e.status === "ACTIVE").length;
+    const inactive = filteredEmployees.filter(e => e.status === "INACTIVE").length;
+    const suspended= filteredEmployees.filter(e => e.status === "SUSPENDED").length;
+    const terminated=filteredEmployees.filter(e => e.status === "TERMINATED").length;
+    const fillRate = filteredPositions.length > 0 ? (filled / filteredPositions.length) * 100 : 0;
 
     // Positions by department (bar chart)
     const deptPositionMap = new Map<string, { filled: number; vacant: number }>();
-    positions.forEach(p => {
+    filteredPositions.forEach(p => {
       const dept = departments.find(d => d.id === p.department_id)?.name ?? "Unknown";
       const cur = deptPositionMap.get(dept) ?? { filled: 0, vacant: 0 };
       p.is_vacant ? cur.vacant++ : cur.filled++;
@@ -348,7 +403,7 @@ export default function AnalyticsDashboard() {
       .map(level => ({
         name: level.length > 12 ? level.replace(" Manager","Mgr").replace("Graduate Trainee","Grad") : level,
         fullName: level,
-        count: positions.filter(p => p.level === level).length,
+        count: filteredPositions.filter(p => p.level === level).length,
         fill: LEVEL_COLORS[level],
       }))
       .filter(l => l.count > 0);
@@ -375,13 +430,15 @@ export default function AnalyticsDashboard() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 7);
 
-    // Monthly additions — all time, one entry per month since earliest record
+    // Monthly additions — filtered by date range
     const now = new Date();
-    const earliestPos  = positions.reduce((min, p) => p.created_at && p.created_at < min ? p.created_at : min, now.toISOString());
-    const earliestEmp  = employees.reduce((min, e) => e.created_at && e.created_at < min ? e.created_at : min, now.toISOString());
+    const srcPos = isFiltered ? filteredPositions : positions;
+    const srcEmp = isFiltered ? filteredEmployees : employees;
+    const earliestPos  = srcPos.reduce((min, p) => (p as any).created_at && (p as any).created_at < min ? (p as any).created_at : min, now.toISOString());
+    const earliestEmp  = srcEmp.reduce((min, e) => (e as any).created_at && (e as any).created_at < min ? (e as any).created_at : min, now.toISOString());
     const earliest     = earliestPos < earliestEmp ? earliestPos : earliestEmp;
     const startDate    = earliest ? new Date(earliest) : new Date();
-    startDate.setDate(1); // normalize to first of month
+    startDate.setDate(1);
 
     const now2 = new Date();
     const allMonths: { key: string; label: string }[] = [];
@@ -393,7 +450,6 @@ export default function AnalyticsDashboard() {
       });
       cur2.setMonth(cur2.getMonth() + 1);
     }
-    // If no data yet, fall back to last 12 months
     const monthRange = allMonths.length > 0 ? allMonths : Array.from({ length: 12 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
       return {
@@ -404,8 +460,8 @@ export default function AnalyticsDashboard() {
 
     const posLine = monthRange.map(({ key, label }) => ({
       month:     label,
-      Positions: positions.filter(p => p.created_at?.startsWith(key)).length,
-      Employees: employees.filter(e => e.created_at?.startsWith(key)).length,
+      Positions: srcPos.filter(p => (p as any).created_at?.startsWith(key)).length,
+      Employees: srcEmp.filter(e => (e as any).created_at?.startsWith(key)).length,
     }));
 
     return {
@@ -413,7 +469,7 @@ export default function AnalyticsDashboard() {
       fillRate, deptBar, levelBar, vacancyPie, statusPie,
       deptSizePie, posLine,
     };
-  }, [departments, positions, employees]);
+  }, [departments, filteredPositions, filteredEmployees, positions, employees, isFiltered]);
 
   const performanceMetrics = useMemo(() => {
     if (!performanceSummary) return null;
@@ -514,42 +570,39 @@ export default function AnalyticsDashboard() {
   // email -> department_id: comes directly from backend (EmployeePosition join)
   const emailToDeptId = useMemo(() => new Map(Object.entries(empDeptMap)), [empDeptMap]);
 
-  // Filtered leave employees
+  // Filtered leave employees (dept filter applied on top of date filter)
   const filteredLeaveEmps = useMemo(() => {
-    if (!leaveSummary?.employees) return [];
-    if (!leaveDeptFilter) return leaveSummary.employees;
+    if (!filteredLeaveSummary?.employees) return [];
+    if (!leaveDeptFilter) return filteredLeaveSummary.employees;
     const subtree = getDeptSubtree(leaveDeptFilter);
-    return leaveSummary.employees.filter((e: any) => {
+    return filteredLeaveSummary.employees.filter((e: any) => {
       const deptId = emailToDeptId.get(e.email);
       return deptId && subtree.has(deptId);
     });
-  }, [leaveSummary, leaveDeptFilter, getDeptSubtree, emailToDeptId]);
+  }, [filteredLeaveSummary, leaveDeptFilter, getDeptSubtree, emailToDeptId]);
 
   // leaveUtilMetrics uses filteredLeaveEmps so must come after it
   const leaveUtilMetrics = useMemo(() => {
-    if (!leaveSummary) return null;
-    // Use filtered employees when dept filter is active, else all
+    if (!filteredLeaveSummary) return null;
     const emps: any[] = leaveDeptFilter
       ? filteredLeaveEmps
-      : (leaveSummary.employees ?? []);
+      : (filteredLeaveSummary.employees ?? []);
     const totalEntitlement = emps.reduce((s: number, e: any) => s + (e.annual_entitlement ?? 0), 0);
     const annualUsed = emps.reduce((s: number, e: any) => {
       const approved = (e.records ?? []).filter((r: any) => r.status === "approved" && r.leave_type === "annual");
       return s + approved.reduce((ss: number, r: any) => ss + (r.days_taken ?? 0), 0);
     }, 0);
     const rate = totalEntitlement > 0 ? Math.round((annualUsed / totalEntitlement) * 100) : 0;
-    const onLeave = leaveSummary.on_leave_now ?? 0;
+    const onLeave = filteredLeaveSummary.on_leave_now ?? 0;
     return { rate, annualUsed, totalEntitlement, onLeave };
-  }, [leaveSummary, filteredLeaveEmps, leaveDeptFilter]);
+  }, [filteredLeaveSummary, filteredLeaveEmps, leaveDeptFilter]);
 
   // Recompute leaveMetrics from filteredLeaveEmps
   const leaveMetrics = useMemo(() => {
-    if (!leaveSummary?.employees?.length) return null;
-    // When a dept filter is active, use filtered employees;
-    // when no filter, use all employees. Never fall back to all when filter is set.
+    if (!filteredLeaveSummary?.employees?.length) return null;
     const emps: any[] = leaveDeptFilter
-      ? filteredLeaveEmps          // filtered — could be 0 or more
-      : leaveSummary.employees;   // no filter — use all
+      ? filteredLeaveEmps
+      : filteredLeaveSummary.employees;
 
     // Totals per leave type
     const totals = { annual: 0, sick: 0, maternity: 0, paternity: 0, compassionate: 0 };
@@ -609,27 +662,24 @@ export default function AnalyticsDashboard() {
       perEmployee, avgUsed, fullyUsed, notUsed,
       totalEmployees: emps.length, totalEntitlement,
     };
-  }, [leaveSummary, filteredLeaveEmps, leaveDeptFilter]);
+  }, [filteredLeaveSummary, filteredLeaveEmps, leaveDeptFilter]);
 
   const exitMetrics = useMemo(() => {
-    if (!exitSummary) return null;
-    const exits: any[] = exitSummary.exits ?? [];
-    // By department bar chart
-    const byDept = Object.entries(exitSummary.by_department ?? {})
+    if (!filteredExitSummary) return null;
+    const exits: any[] = filteredExitSummary.exits ?? [];
+    const byDept = Object.entries(filteredExitSummary.by_department ?? {})
       .map(([name, count]) => ({ name: name.length > 18 ? name.slice(0,17)+"…" : name, count: count as number }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-    // By reason
     const byReason = [
-      { name: "Resignation",     value: exitSummary.by_reason?.resignation     ?? 0, fill: COLORS.amber  },
-      { name: "Termination",     value: exitSummary.by_reason?.termination     ?? 0, fill: COLORS.rose   },
-      { name: "End of Contract", value: exitSummary.by_reason?.end_of_contract ?? 0, fill: COLORS.slate  },
+      { name: "Resignation",     value: filteredExitSummary.by_reason?.resignation     ?? 0, fill: COLORS.amber  },
+      { name: "Termination",     value: filteredExitSummary.by_reason?.termination     ?? 0, fill: COLORS.rose   },
+      { name: "End of Contract", value: filteredExitSummary.by_reason?.end_of_contract ?? 0, fill: COLORS.slate  },
     ].filter(d => d.value > 0);
-    // By type
-    const regrettable    = exitSummary.by_type?.regrettable     ?? 0;
-    const nonRegrettable = exitSummary.by_type?.non_regrettable ?? 0;
-    return { exits, byDept, byReason, regrettable, nonRegrettable, total: exitSummary.total ?? 0 };
-  }, [exitSummary]);
+    const regrettable    = filteredExitSummary.by_type?.regrettable     ?? 0;
+    const nonRegrettable = filteredExitSummary.by_type?.non_regrettable ?? 0;
+    return { exits, byDept, byReason, regrettable, nonRegrettable, total: filteredExitSummary.total ?? 0 };
+  }, [filteredExitSummary]);
 
   // ── export ───────────────────────────────────────────────────────
   const exportData = useMemo(() => ({
@@ -670,8 +720,13 @@ export default function AnalyticsDashboard() {
             </p>
             <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-300">
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{departments.length} Departments</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{positions.length} Positions</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{employees.length} Employees</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{filteredPositions.length}{isFiltered ? ` of ${positions.length}` : ""} Positions</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">{filteredEmployees.length}{isFiltered ? ` of ${employees.length}` : ""} Employees</span>
+              {isFiltered && (
+                <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-cyan-300 font-medium">
+                  📅 {dateRangeLabel}
+                </span>
+              )}
             </div>
           </div>
           {/* Export builder trigger */}
@@ -712,7 +767,76 @@ export default function AnalyticsDashboard() {
         </div>
       ) : (
         <>
-          {/* ── 6 New KPI Cards ── */}
+          {/* ── Global Date Range Filter Bar ── */}
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-5 py-3.5 shadow-sm">
+            <div className="flex items-center gap-2 shrink-0">
+              <CalendarRange className="h-4 w-4 text-cyan-500" />
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Filter Period</span>
+            </div>
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide w-8">From</span>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  className="bg-transparent text-sm text-slate-700 dark:text-slate-300 focus:outline-none"
+                />
+              </div>
+              <span className="text-slate-400 font-bold">→</span>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide w-6">To</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  className="bg-transparent text-sm text-slate-700 dark:text-slate-300 focus:outline-none"
+                />
+              </div>
+
+              {/* Quick presets */}
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "This Year",  from: `${new Date().getFullYear()}-01-01`, to: new Date().toISOString().slice(0,10) },
+                  { label: "Last Year",  from: `${new Date().getFullYear()-1}-01-01`, to: `${new Date().getFullYear()-1}-12-31` },
+                  { label: "Last 6 mo",  from: new Date(Date.now() - 180*86400000).toISOString().slice(0,10), to: new Date().toISOString().slice(0,10) },
+                  { label: "Last 3 mo",  from: new Date(Date.now() -  90*86400000).toISOString().slice(0,10), to: new Date().toISOString().slice(0,10) },
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    onClick={() => { setDateFrom(p.from); setDateTo(p.to); }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                      dateFrom === p.from && dateTo === p.to
+                        ? "bg-cyan-500 text-white"
+                        : "border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-400"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Active filter badge + reset */}
+            {isFiltered ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 px-3 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                  {filteredEmployees.length} employees · {filteredPositions.length} positions
+                </span>
+                <button
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <RotateCcw className="h-3 w-3" /> Reset
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400 shrink-0">Showing all-time data</span>
+            )}
+          </div>
+
+          {/* ── 6 KPI Cards ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
             {/* 1. Staff Headcount + Gender */}
@@ -724,7 +848,7 @@ export default function AnalyticsDashboard() {
                   <div className="rounded-xl bg-cyan-100 dark:bg-slate-800 p-2"><Users className="h-4 w-4 text-cyan-600" /></div>
                 </div>
                 <p className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-50">{headcountMetrics.total}</p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {employees.length - a.active} exited/inactive</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{a.active} active · {filteredEmployees.length - a.active} exited/inactive</p>
                 <div className="mt-3 space-y-1.5">
                   <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
                     <span>♂ Male {headcountMetrics.malePct}%</span>
@@ -760,10 +884,10 @@ export default function AnalyticsDashboard() {
                 {avgAgeMetrics.count > 0 && (
                   <div className="mt-3 flex gap-2">
                     {[
-                      { label: "<30",   count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) < 30).length,  color: "bg-cyan-500"   },
-                      { label: "30–40", count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 30 && calcAge(e.date_of_birth) < 40).length, color: "bg-violet-500" },
-                      { label: "40–50", count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 40 && calcAge(e.date_of_birth) < 50).length, color: "bg-amber-500"  },
-                      { label: "50+",   count: employees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 50).length,  color: "bg-rose-500"   },
+                      { label: "<30",   count: filteredEmployees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) < 30).length,  color: "bg-cyan-500"   },
+                      { label: "30–40", count: filteredEmployees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 30 && calcAge(e.date_of_birth) < 40).length, color: "bg-violet-500" },
+                      { label: "40–50", count: filteredEmployees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 40 && calcAge(e.date_of_birth) < 50).length, color: "bg-amber-500"  },
+                      { label: "50+",   count: filteredEmployees.filter((e: any) => e.date_of_birth && calcAge(e.date_of_birth) >= 50).length,  color: "bg-rose-500"   },
                     ].map(g => (
                       <div key={g.label} className="flex-1 text-center">
                         <div className={`mx-auto h-1.5 w-full rounded-full ${g.color} mb-1`} />
@@ -1351,7 +1475,7 @@ export default function AnalyticsDashboard() {
                   </>
                 )}
                 <span className="text-xs text-slate-400">
-                  {filteredLeaveEmps.length} of {leaveSummary?.employees?.length ?? 0} employee{leaveSummary?.employees?.length !== 1 ? "s" : ""}
+                  {filteredLeaveEmps.length} of {filteredLeaveSummary?.employees?.length ?? 0} employee{filteredLeaveSummary?.employees?.length !== 1 ? "s" : ""}
                 </span>
               </div>
 
@@ -1786,8 +1910,8 @@ export default function AnalyticsDashboard() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   { label: "Total Exits",       value: exitMetrics.total,           accent: "bg-slate-500",   sub: "All time" },
-                  { label: "Resignations",      value: exitSummary.by_reason?.resignation ?? 0,     accent: "bg-amber-500",  sub: "Voluntary" },
-                  { label: "Terminations",      value: exitSummary.by_reason?.termination ?? 0,     accent: "bg-rose-500",   sub: "Employer-initiated" },
+                  { label: "Resignations",      value: filteredExitSummary?.by_reason?.resignation ?? 0,     accent: "bg-amber-500",  sub: "Voluntary" },
+                  { label: "Terminations",      value: filteredExitSummary?.by_reason?.termination ?? 0,     accent: "bg-rose-500",   sub: "Employer-initiated" },
                   { label: "Regrettable Exits", value: exitMetrics.regrettable,     accent: "bg-violet-500", sub: "Talent we wanted to keep" },
                 ].map(k => (
                   <div key={k.label} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
