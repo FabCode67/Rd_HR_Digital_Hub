@@ -691,7 +691,7 @@ export default function EmployeeManagement() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" className="field pl-9 pr-9" />
@@ -701,6 +701,20 @@ export default function EmployeeManagement() {
           <option value="">All statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
         </select>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Joined from</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="field w-40" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Joined to</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="field w-40" />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <X className="h-3 w-3" /> Clear dates
+          </button>
+        )}
       </div>
 
       {/* Table */}

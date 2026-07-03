@@ -241,7 +241,8 @@ export default function ExitManagement() {
   const [data,       setData]       = useState<any>(null);
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState("");
-  const [filterYear, setFilterYear] = useState<number | "">(new Date().getFullYear());
+  const [dateFrom,   setDateFrom]   = useState("");  // filters by exit date
+  const [dateTo,     setDateTo]     = useState("");
   const [filterReason, setFilterReason] = useState("");
   const [filterType,   setFilterType]   = useState("");
   const [undoTarget, setUndoTarget] = useState<any>(null);
@@ -252,21 +253,41 @@ export default function ExitManagement() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Unscoped by year — the date range filter below narrows precisely by
+      // exit_date on the client, so we always fetch the full history.
       setData(await apiClient.exits.list({
-        year:        filterYear ? Number(filterYear) : undefined,
         exit_reason: filterReason || undefined,
         exit_type:   filterType   || undefined,
       }));
     } catch (e: any) { toast.error("Load failed", e?.message); }
     finally { setLoading(false); }
-  }, [filterYear, filterReason, filterType]);
+  }, [filterReason, filterType]);
 
   useEffect(() => { void load(); }, [load]);
 
   const exits: any[] = useMemo(() =>
-    (data?.exits ?? []).filter((e: any) =>
-      !search.trim() || e.employee_name.toLowerCase().includes(search.toLowerCase())
-    ), [data, search]);
+    (data?.exits ?? []).filter((e: any) => {
+      if (search.trim() && !e.employee_name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (dateFrom || dateTo) {
+        const d = (e.exit_date || "").slice(0, 10);
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo   && d > dateTo)   return false;
+      }
+      return true;
+    }), [data, search, dateFrom, dateTo]);
+
+  // Stats recomputed from the filtered exits (not `data.total` etc, which
+  // reflect the full unscoped fetch) so the KPI cards track the date filter.
+  const stats = useMemo(() => {
+    const by_reason: Record<string, number> = {};
+    const by_type:   Record<string, number> = {};
+    exits.forEach((e: any) => {
+      if (e.exit_reason) by_reason[e.exit_reason] = (by_reason[e.exit_reason] ?? 0) + 1;
+      if (e.exit_type)   by_type[e.exit_type]     = (by_type[e.exit_type]     ?? 0) + 1;
+    });
+    return { total: exits.length, by_reason, by_type };
+  }, [exits]);
 
   const confirmUndo = async () => {
     if (!undoTarget) return;
@@ -279,8 +300,6 @@ export default function ExitManagement() {
     } catch (e: any) { toast.error("Failed", e?.message); }
     finally { setUndoing(false); }
   };
-
-  const currentYear = new Date().getFullYear();
 
   return (
     <section className="min-w-0 space-y-5">
@@ -300,11 +319,11 @@ export default function ExitManagement() {
       {data && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
-            { label: "Total Exits",     value: data.total,                              color: "bg-slate-100 dark:bg-slate-800",              text: "text-slate-700 dark:text-slate-300" },
-            { label: "Resignations",    value: data.by_reason?.resignation ?? 0,        color: "bg-amber-50 dark:bg-amber-950/30",             text: "text-amber-700 dark:text-amber-300" },
-            { label: "Terminations",    value: data.by_reason?.termination ?? 0,        color: "bg-red-50 dark:bg-red-950/30",                text: "text-red-700 dark:text-red-300" },
-            { label: "End of Contract", value: data.by_reason?.end_of_contract ?? 0,   color: "bg-slate-50 dark:bg-slate-800/50",             text: "text-slate-600 dark:text-slate-400" },
-            { label: "Regrettable",     value: data.by_type?.regrettable ?? 0,          color: "bg-rose-50 dark:bg-rose-950/30",               text: "text-rose-700 dark:text-rose-300" },
+            { label: "Total Exits",     value: stats.total,                              color: "bg-slate-100 dark:bg-slate-800",              text: "text-slate-700 dark:text-slate-300" },
+            { label: "Resignations",    value: stats.by_reason?.resignation ?? 0,        color: "bg-amber-50 dark:bg-amber-950/30",             text: "text-amber-700 dark:text-amber-300" },
+            { label: "Terminations",    value: stats.by_reason?.termination ?? 0,        color: "bg-red-50 dark:bg-red-950/30",                text: "text-red-700 dark:text-red-300" },
+            { label: "End of Contract", value: stats.by_reason?.end_of_contract ?? 0,   color: "bg-slate-50 dark:bg-slate-800/50",             text: "text-slate-600 dark:text-slate-400" },
+            { label: "Regrettable",     value: stats.by_type?.regrettable ?? 0,          color: "bg-rose-50 dark:bg-rose-950/30",               text: "text-rose-700 dark:text-rose-300" },
           ].map(s => (
             <div key={s.label} className={cn("rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3", s.color)}>
               <p className={cn("text-xl font-bold", s.text)}>{s.value}</p>
@@ -315,18 +334,27 @@ export default function ExitManagement() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name…" className="field pl-9 pr-9" />
           {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
         </div>
-        <select value={filterYear} onChange={e => setFilterYear(e.target.value ? Number(e.target.value) : "")}
-          className="field w-28">
-          <option value="">All years</option>
-          {Array.from({ length: 2050 - 2010 + 1 }, (_, i) => 2010 + i).map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Exited from</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="field w-40" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Exited to</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="field w-40" />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <X className="h-3 w-3" /> Clear dates
+          </button>
+        )}
         <select value={filterReason} onChange={e => setFilterReason(e.target.value)} className="field w-44">
           <option value="">All reasons</option>
           {EXIT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}

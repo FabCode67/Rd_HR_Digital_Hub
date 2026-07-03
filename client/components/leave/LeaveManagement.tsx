@@ -506,6 +506,8 @@ export default function LeaveManagement() {
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState<number | null>(new Date().getMonth() + 1);
   const [search, setSearch]     = useState("");
+  const [dateFrom, setDateFrom] = useState("");  // filters by leave start date
+  const [dateTo, setDateTo]     = useState("");
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const toast = useToast();
 
@@ -518,9 +520,20 @@ export default function LeaveManagement() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const employees = (summary?.employees ?? []).filter((e: any) =>
-    !search.trim() || e.employee_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const employees = (summary?.employees ?? []).filter((e: any) => {
+    if (search.trim() && !e.employee_name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (dateFrom || dateTo) {
+      const hasRecordInRange = (e.records ?? []).some((r: any) => {
+        const d = (r.start_date || "").slice(0, 10);
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo   && d > dateTo)   return false;
+        return true;
+      });
+      if (!hasRecordInRange) return false;
+    }
+    return true;
+  });
 
   return (
     <section className="min-w-0 space-y-5">
@@ -609,11 +622,27 @@ export default function LeaveManagement() {
       </div>
 
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search employees…" className="field pl-9 pr-9" />
-        {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search employees…" className="field pl-9 pr-9" />
+          {search && <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Leave taken from</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="field w-40" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Leave taken to</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="field w-40" />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <X className="h-3 w-3" /> Clear dates
+          </button>
+        )}
       </div>
 
       {/* Table */}
