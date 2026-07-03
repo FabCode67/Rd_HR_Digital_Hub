@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
+import { Pagination } from "@/components/ui/Pagination";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Allocation {
@@ -506,8 +508,11 @@ export default function LeaveManagement() {
   const [year, setYear]         = useState(new Date().getFullYear());
   const [month, setMonth]       = useState<number | null>(new Date().getMonth() + 1);
   const [search, setSearch]     = useState("");
+  const debouncedSearch         = useDebouncedValue(search, 250);
   const [dateFrom, setDateFrom] = useState("");  // filters by leave start date
   const [dateTo, setDateTo]     = useState("");
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const toast = useToast();
 
@@ -521,7 +526,7 @@ export default function LeaveManagement() {
   useEffect(() => { void load(); }, [load]);
 
   const employees = (summary?.employees ?? []).filter((e: any) => {
-    if (search.trim() && !e.employee_name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (debouncedSearch.trim() && !e.employee_name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
     if (dateFrom || dateTo) {
       const hasRecordInRange = (e.records ?? []).some((r: any) => {
         const d = (r.start_date || "").slice(0, 10);
@@ -534,6 +539,11 @@ export default function LeaveManagement() {
     }
     return true;
   });
+
+  // Reset to page 1 whenever the filtered set changes shape
+  useEffect(() => { setPage(1); }, [debouncedSearch, dateFrom, dateTo, year, month]);
+
+  const paginatedEmployees = employees.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <section className="min-w-0 space-y-5">
@@ -672,7 +682,7 @@ export default function LeaveManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {employees.map((emp: any) => {
+                {paginatedEmployees.map((emp: any) => {
                   const annualAlloc = emp.allocations.find((a: Allocation) => a.leave_type === "annual");
                   const otherAllocs = emp.allocations.filter((a: Allocation) => a.leave_type !== "annual");
                   const used  = annualAlloc?.used_days  ?? 0;
@@ -744,6 +754,13 @@ export default function LeaveManagement() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && employees.length > 0 && (
+          <Pagination
+            page={page} pageSize={pageSize} total={employees.length}
+            onPageChange={setPage} onPageSizeChange={setPageSize}
+            itemLabel="employees"
+          />
         )}
       </div>
 

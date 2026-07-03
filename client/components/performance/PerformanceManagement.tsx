@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
+import { Pagination } from "@/components/ui/Pagination";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 // ── Rating config ──────────────────────────────────────────────────────────────
 const RATINGS = [
@@ -465,8 +467,11 @@ export default function PerformanceManagement() {
   const [year, setYear]           = useState(new Date().getFullYear());
   const [cycle, setCycle]         = useState<string>("");
   const [search, setSearch]       = useState("");
+  const debouncedSearch           = useDebouncedValue(search, 250);
   const [dateFrom, setDateFrom]   = useState("");  // filters by review reviewed_at date
   const [dateTo, setDateTo]       = useState("");
+  const [page, setPage]           = useState(1);
+  const [pageSize, setPageSize]   = useState(25);
   const [selected, setSelected]   = useState<any | null>(null);
   const toast = useToast();
 
@@ -481,7 +486,7 @@ export default function PerformanceManagement() {
 
   const employees = useMemo(() =>
     (summary?.employees ?? []).filter((e: any) => {
-      if (search.trim() && !e.employee_name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (debouncedSearch.trim() && !e.employee_name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
       if (dateFrom || dateTo) {
         const hasReviewInRange = (e.reviews ?? []).some((r: any) => {
           const d = (r.reviewed_at || r.created_at || "").slice(0, 10);
@@ -493,7 +498,15 @@ export default function PerformanceManagement() {
         if (!hasReviewInRange) return false;
       }
       return true;
-    }), [summary, search, dateFrom, dateTo]);
+    }), [summary, debouncedSearch, dateFrom, dateTo]);
+
+  // Reset to page 1 whenever the filtered set changes shape
+  useEffect(() => { setPage(1); }, [debouncedSearch, dateFrom, dateTo, year, cycle]);
+
+  const paginatedEmployees = useMemo(
+    () => employees.slice((page - 1) * pageSize, page * pageSize),
+    [employees, page, pageSize]
+  );
 
   const ratingDist = useMemo(() => {
     const counts: Record<number, number> = { 5:0, 4:0, 3:0, 2:0, 1:0 };
@@ -628,7 +641,7 @@ export default function PerformanceManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {employees.map((emp: any) => {
+                {paginatedEmployees.map((emp: any) => {
                   const midYear = emp.reviews?.find((r: any) => r.cycle === "mid_year");
                   const endYear = emp.reviews?.find((r: any) => r.cycle === "end_year");
                   const bothDone = midYear && !midYear.is_draft && endYear && !endYear.is_draft;
@@ -679,6 +692,13 @@ export default function PerformanceManagement() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && employees.length > 0 && (
+          <Pagination
+            page={page} pageSize={pageSize} total={employees.length}
+            onPageChange={setPage} onPageSizeChange={setPageSize}
+            itemLabel="employees"
+          />
         )}
       </div>
 

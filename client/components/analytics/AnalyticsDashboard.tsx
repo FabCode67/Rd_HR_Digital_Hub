@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, memo, type ReactNode } from "react";
 import { apiClient } from "@/lib/api";
 import { Department, Employee, Position, PositionLevel } from "@/lib/types";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { LazySection } from "@/components/ui/LazySection";
 import {
   Loader2, Building2, Briefcase, Users,
   BadgeCheck, TrendingUp, AlertCircle,
@@ -167,6 +169,53 @@ function ActivePieShape(props: any) {
   );
 }
 
+// ─── Interactive pie (memoized) ────────────────────────────────────────────
+// Hover state (`active`) lives inside this component instead of the parent
+// dashboard, so hovering a pie slice only re-renders this small chart — not
+// the entire multi-thousand-line dashboard tree (every other chart, KPI
+// card, and table) on every mouse move.
+const InteractivePie = memo(function InteractivePie({
+  data, height = 240, innerRadius = 60, outerRadius = 90, dense = false,
+}: {
+  data: { name: string; value: number; fill: string }[];
+  height?: number; innerRadius?: number; outerRadius?: number; dense?: boolean;
+}) {
+  const [active, setActive] = useState(0);
+  if (data.length === 0) {
+    return <p className="py-10 text-center text-sm text-slate-400">No data yet</p>;
+  }
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={height}>
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%" cy="50%"
+            innerRadius={innerRadius} outerRadius={outerRadius}
+            dataKey="value"
+            activeIndex={active}
+            activeShape={ActivePieShape}
+            onMouseEnter={(_, i) => setActive(i)}
+          >
+            {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className={dense ? "mt-2 flex flex-wrap justify-center gap-2 text-[10px]" : "mt-2 flex flex-wrap justify-center gap-4 text-xs"}>
+        {data.map(d => (
+          <span key={d.name} className={dense ? "flex items-center gap-1" : "flex items-center gap-1.5"}>
+            <span className={dense ? "h-2 w-2 flex-shrink-0 rounded-full" : "h-2.5 w-2.5 rounded-full"} style={{ background: d.fill }} />
+            <span className={dense ? "text-slate-500 dark:text-slate-400 truncate max-w-[80px]" : "text-slate-600 dark:text-slate-400"}>
+              {dense ? d.name : `${d.name} (${d.value})`}
+            </span>
+          </span>
+        ))}
+      </div>
+    </>
+  );
+});
+
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 export default function AnalyticsDashboard() {
@@ -188,15 +237,22 @@ export default function AnalyticsDashboard() {
   // ── Global date range filter ───────────────────────────────────────────────
   const [dateFrom, setDateFrom] = useState("");  // e.g. "2024-01-01"
   const [dateTo,   setDateTo]   = useState("");  // e.g. "2025-01-01"
-  const isFiltered = !!(dateFrom || dateTo);
+  // Debounced versions feed every downstream computation (filters, secondary
+  // network fetch) so rapid interaction — typing a date, clicking through
+  // quick-select presets — doesn't cascade into repeated heavy recomputation
+  // or duplicate API calls. The raw values still drive the input fields
+  // themselves so typing feels instant.
+  const debouncedDateFrom = useDebouncedValue(dateFrom, 300);
+  const debouncedDateTo   = useDebouncedValue(dateTo, 300);
+  const isFiltered = !!(debouncedDateFrom || debouncedDateTo);
 
   const inRange = useCallback((dateStr: string | null | undefined): boolean => {
     if (!dateStr) return true; // no date = always include
     const d = dateStr.slice(0, 10);
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo   && d > dateTo)   return false;
+    if (debouncedDateFrom && d < debouncedDateFrom) return false;
+    if (debouncedDateTo   && d > debouncedDateTo)   return false;
     return true;
-  }, [dateFrom, dateTo]);
+  }, [debouncedDateFrom, debouncedDateTo]);
 
   // Date-filtered employees (by date_joined — falls back to created_at for
   // legacy records saved before date_joined existed)
@@ -297,11 +353,11 @@ export default function AnalyticsDashboard() {
   }, [performanceSummary, isFiltered, inRange]);
 
   const dateRangeLabel = useMemo(() => {
-    if (!dateFrom && !dateTo) return "All time";
-    if (dateFrom && dateTo)   return `${dateFrom} → ${dateTo}`;
-    if (dateFrom)             return `From ${dateFrom}`;
-    return `Up to ${dateTo}`;
-  }, [dateFrom, dateTo]);
+    if (!debouncedDateFrom && !debouncedDateTo) return "All time";
+    if (debouncedDateFrom && debouncedDateTo)   return `${debouncedDateFrom} → ${debouncedDateTo}`;
+    if (debouncedDateFrom)             return `From ${debouncedDateFrom}`;
+    return `Up to ${debouncedDateTo}`;
+  }, [debouncedDateFrom, debouncedDateTo]);
 
   // Backend leave/performance/turnover endpoints are scoped to a single
   // `year`, not an arbitrary from–to range. Derive the most relevant year
@@ -309,10 +365,10 @@ export default function AnalyticsDashboard() {
   // fed by them) actually track what the user picked, instead of always
   // requesting the current year.
   const filterYear = useMemo(() => {
-    if (dateTo)   return new Date(dateTo).getFullYear();
-    if (dateFrom) return new Date(dateFrom).getFullYear();
+    if (debouncedDateTo)   return new Date(debouncedDateTo).getFullYear();
+    if (debouncedDateFrom) return new Date(debouncedDateFrom).getFullYear();
     return new Date().getFullYear();
-  }, [dateFrom, dateTo]);
+  }, [debouncedDateFrom, debouncedDateTo]);
 
   // ── Export section config ──────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0,10);
@@ -350,11 +406,6 @@ export default function AnalyticsDashboard() {
   const updateSection = (key: SectionKey, field: "from"|"to", val: string) =>
     setSections(s => ({ ...s, [key]: { ...s[key], [field]: val } }));
   const enabledCount = Object.values(sections).filter(s => s.enabled).length;
-
-  // Pie active slice state
-  const [vacancyActive,   setVacancyActive]   = useState(0);
-  const [statusActive,    setStatusActive]    = useState(0);
-  const [deptActive,      setDeptActive]      = useState(0);
 
   // Core org data — loaded once. Employees/positions are filtered client-side
   // (see filteredEmployees above), so this never needs to refetch on date change.
@@ -1384,32 +1435,7 @@ export default function AnalyticsDashboard() {
               title="Vacancy Status"
               subtitle="Filled vs vacant positions"
             >
-              {a.vacancyPie.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={a.vacancyPie}
-                      cx="50%" cy="50%"
-                      innerRadius={60} outerRadius={90}
-                      dataKey="value"
-                      activeIndex={vacancyActive}
-                      activeShape={ActivePieShape}
-                      onMouseEnter={(_, i) => setVacancyActive(i)}
-                    >
-                      {a.vacancyPie.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : <p className="py-10 text-center text-sm text-slate-400">No data yet</p>}
-              <div className="mt-2 flex justify-center gap-4 text-xs">
-                {a.vacancyPie.map(d => (
-                  <span key={d.name} className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.fill }} />
-                    <span className="text-slate-600 dark:text-slate-400">{d.name} ({d.value})</span>
-                  </span>
-                ))}
-              </div>
+              <InteractivePie data={a.vacancyPie} height={240} innerRadius={60} outerRadius={90} />
             </ChartCard>
 
             {/* Employee status pie */}
@@ -1417,32 +1443,7 @@ export default function AnalyticsDashboard() {
               title="Employee Status"
               subtitle="Breakdown by employment status"
             >
-              {a.statusPie.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={a.statusPie}
-                      cx="50%" cy="50%"
-                      innerRadius={60} outerRadius={90}
-                      dataKey="value"
-                      activeIndex={statusActive}
-                      activeShape={ActivePieShape}
-                      onMouseEnter={(_, i) => setStatusActive(i)}
-                    >
-                      {a.statusPie.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : <p className="py-10 text-center text-sm text-slate-400">No data yet</p>}
-              <div className="mt-2 flex flex-wrap justify-center gap-3 text-xs">
-                {a.statusPie.map(d => (
-                  <span key={d.name} className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.fill }} />
-                    <span className="text-slate-600 dark:text-slate-400">{d.name} ({d.value})</span>
-                  </span>
-                ))}
-              </div>
+              <InteractivePie data={a.statusPie} height={240} innerRadius={60} outerRadius={90} />
             </ChartCard>
 
             {/* Dept size pie */}
@@ -1450,37 +1451,13 @@ export default function AnalyticsDashboard() {
               title="Positions per Department"
               subtitle="Share of total positions (top 7 departments)"
             >
-              {a.deptSizePie.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={a.deptSizePie}
-                      cx="50%" cy="50%"
-                      innerRadius={55} outerRadius={88}
-                      dataKey="value"
-                      activeIndex={deptActive}
-                      activeShape={ActivePieShape}
-                      onMouseEnter={(_, i) => setDeptActive(i)}
-                    >
-                      {a.deptSizePie.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : <p className="py-10 text-center text-sm text-slate-400">No departments with positions yet</p>}
-              <div className="mt-2 flex flex-wrap justify-center gap-2 text-[10px]">
-                {a.deptSizePie.map(d => (
-                  <span key={d.name} className="flex items-center gap-1">
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: d.fill }} />
-                    <span className="text-slate-500 dark:text-slate-400 truncate max-w-[80px]">{d.name}</span>
-                  </span>
-                ))}
-              </div>
+              <InteractivePie data={a.deptSizePie} height={240} innerRadius={55} outerRadius={88} dense />
             </ChartCard>
           </div>
 
           {/* ── Performance Analytics ── */}
           {performanceMetrics && performanceMetrics.totalReviewed > 0 && (
+            <LazySection minHeight={640}>
             <>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -1624,10 +1601,12 @@ export default function AnalyticsDashboard() {
 
               </div>
             </>
+            </LazySection>
           )}
 
           {/* ── Leave Analytics ── */}
           {leaveMetrics && (
+            <LazySection minHeight={640}>
             <>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -1867,6 +1846,7 @@ export default function AnalyticsDashboard() {
                 </ChartCard>
               </div>
             </>
+            </LazySection>
           )}
 
           {/* ── Turnover & Retention Analysis ── */}
@@ -1876,6 +1856,7 @@ export default function AnalyticsDashboard() {
           {turnoverData && (() => {
             const turnoverData = filteredTurnoverData as any;
             return (
+            <LazySection minHeight={640}>
             <>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -2098,11 +2079,13 @@ export default function AnalyticsDashboard() {
                 })()}
               </ChartCard>
             </>
+            </LazySection>
             );
           })()}
 
           {/* ── Exit Analysis ── */}
           {exitMetrics && exitMetrics.total > 0 && (
+            <LazySection minHeight={640}>
             <>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -2218,6 +2201,7 @@ export default function AnalyticsDashboard() {
                 </ChartCard>
               </div>
             </>
+            </LazySection>
           )}
         </>
       )}

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
+import { Pagination } from "@/components/ui/Pagination";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import CareerTimeline from "./CareerTimeline";
 import { useAuth } from "@/contexts/AuthContext";
 import { ExitFormModal } from "@/components/exits/ExitManagement";
@@ -200,9 +202,14 @@ export default function EmployeeManagement() {
 
   // Filters
   const [search, setSearch]         = useState("");
+  const debouncedSearch             = useDebouncedValue(search, 250);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [dateFrom, setDateFrom]     = useState("");  // filters by Date of Joining
   const [dateTo, setDateTo]         = useState("");
+
+  // Pagination — keeps rendered rows bounded regardless of employee count
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   // Form drawer
   const [form, setForm]             = useState<FormState>(emptyForm);
@@ -263,8 +270,8 @@ export default function EmployeeManagement() {
   const filtered = useMemo(() => {
     let list = employees;
     if (statusFilter) list = list.filter(e => e.status === statusFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       list = list.filter(e => e.full_name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q));
     }
     if (dateFrom || dateTo) {
@@ -277,23 +284,42 @@ export default function EmployeeManagement() {
       });
     }
     return list;
-  }, [employees, search, statusFilter, dateFrom, dateTo]);
+  }, [employees, debouncedSearch, statusFilter, dateFrom, dateTo]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Reset to page 1 whenever the filtered set changes shape
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, dateFrom, dateTo]);
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize]
+  );
+
+  // Reference data (departments/org-tree/functions) rarely changes compared
+  // to employee records, so it's loaded independently from the employee list
+  // — routine saves/edits/deletes only need to re-fetch loadEmployees(),
+  // avoiding an unnecessary full org-tree refetch on every keystroke-adjacent action.
+  const loadReferenceData = useCallback(async () => {
     try {
-      const [emps, depts, s, tree, funcs] = await Promise.all([
-        apiClient.employee.getAll(0, 500),
+      const [depts, tree, funcs] = await Promise.all([
         apiClient.department.getAll(0, 200),
-        apiClient.employee.getStats(),
         apiClient.position.getOrganizationTree().catch(() => []),
         apiClient.functions.getAll().catch(() => []),
       ]);
-      setEmployees(emps);
       setDepartments(depts);
-      setStats(s);
       setPositionTree(tree);
       setOrgFunctions(funcs);
+    } catch { /* non-critical — employee list is the priority */ }
+  }, []);
+
+  const loadEmployees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [emps, s] = await Promise.all([
+        apiClient.employee.getAll(0, 500),
+        apiClient.employee.getStats(),
+      ]);
+      setEmployees(emps);
+      setStats(s);
       // Load expiring alerts
       try {
         const a = await apiClient.employee.getExpiringAlerts();
@@ -310,6 +336,11 @@ export default function EmployeeManagement() {
       setLoading(false);
     }
   }, []);
+
+  // `load` = full refresh (both), used only on first mount.
+  const load = useCallback(async () => {
+    await Promise.all([loadEmployees(), loadReferenceData()]);
+  }, [loadEmployees, loadReferenceData]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -417,7 +448,7 @@ export default function EmployeeManagement() {
         setAvatarEmployee(created);
         toast.success("Employee created", `${form.full_name} added — continue filling in details.`);
       }
-      await load();
+      await loadEmployees();
       setWizardStep(2);
     } catch (err) {
       toast.error("Save failed", err instanceof Error ? err.message : "Failed");
@@ -437,7 +468,7 @@ export default function EmployeeManagement() {
         past_position: form.past_position.trim() || undefined,
       } as EmployeeUpdateInput);
       toast.success("Saved", "Employment info updated.");
-      await load();
+      await loadEmployees();
       setWizardStep(3);
     } catch (err) {
       toast.error("Save failed", err instanceof Error ? err.message : "Failed");
@@ -454,7 +485,8 @@ export default function EmployeeManagement() {
       if (cur) await apiClient.employee.reassignPosition(id, payload);
       else     await apiClient.employee.assignPosition(id, payload);
       toast.success("Position assigned", "Role assignment saved.");
-      await load();
+      await loadEmployees();
+      void loadReferenceData(); // position assignment changed — org tree needs refreshing too
     } catch (err) {
       toast.error("Assign failed", err instanceof Error ? err.message : "Failed");
     } finally { setSaving(false); }
@@ -465,7 +497,7 @@ export default function EmployeeManagement() {
     const id = editingId || createdEmpId;
     if (!id || eduEntries.length === 0) {
       toast.success("Complete", "Employee profile saved.");
-      await load(); closeDrawer(); return;
+      await loadEmployees(); closeDrawer(); return;
     }
     setSaving(true);
     try {
@@ -487,7 +519,7 @@ export default function EmployeeManagement() {
         }
       }
       toast.success("Complete", `${eduEntries.length} education record${eduEntries.length > 1 ? "s" : ""} saved.`);
-      await load(); closeDrawer();
+      await loadEmployees(); closeDrawer();
     } catch (err) {
       toast.error("Education save failed", err instanceof Error ? err.message : "Failed");
     } finally { setSaving(false); }
@@ -499,7 +531,8 @@ export default function EmployeeManagement() {
     try {
       await apiClient.employee.delete(deleteTarget.id);
       toast.success("Deleted", `${deleteTarget.full_name} removed.`);
-      await load();
+      await loadEmployees();
+      void loadReferenceData(); // deleting an employee frees their position
     } catch (err) {
       toast.error("Delete failed", err instanceof Error ? err.message : "Failed");
     } finally {
@@ -513,7 +546,7 @@ export default function EmployeeManagement() {
     try {
       await apiClient.employee.confirmProbation(emp.employee_id);
       toast.success("Probation confirmed", `${emp.employee_name} has passed probation.`);
-      await load();
+      await loadEmployees();
     } catch (err) {
       toast.error("Failed", err instanceof Error ? err.message : "Could not confirm probation");
     } finally {
@@ -549,6 +582,7 @@ export default function EmployeeManagement() {
       else await apiClient.employee.assignPosition(posModal.id, payload);
       toast.success("Position assigned", "Assignment updated.");
       await openPosModal(posModal);
+      void loadReferenceData(); // keep the main table's Position/Department/Band columns in sync
       setModalPosId("");
     } catch (err) {
       toast.error("Assign failed", err instanceof Error ? err.message : "Failed");
@@ -563,6 +597,7 @@ export default function EmployeeManagement() {
     try {
       await apiClient.employee.unassignPosition(currentAssign.id, toISO(modalDate));
       toast.success("Assignment ended", "Employee unassigned.");
+      void loadReferenceData();
       if (posModal) await openPosModal(posModal);
     } catch (err) {
       toast.error("Failed", err instanceof Error ? err.message : "Failed");
@@ -748,7 +783,7 @@ export default function EmployeeManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map(emp => {
+                {paginated.map(emp => {
                   const posInfo = employeePositionMap.get(emp.id);
                   const age = calcAge(emp.date_of_birth);
                   const probation = probationInfo(emp);
@@ -836,6 +871,13 @@ export default function EmployeeManagement() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <Pagination
+            page={page} pageSize={pageSize} total={filtered.length}
+            onPageChange={setPage} onPageSizeChange={setPageSize}
+            itemLabel="employees"
+          />
         )}
       </div>
 
@@ -1339,7 +1381,7 @@ export default function EmployeeManagement() {
 
               {wizardStep === 5 && (
                 <>
-                  <button onClick={() => { void load(); closeDrawer(); }}
+                  <button onClick={() => { void loadEmployees(); closeDrawer(); }}
                     className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     Skip &amp; Finish
                   </button>
@@ -1490,7 +1532,7 @@ export default function EmployeeManagement() {
                     }
                     toast.success("Extended", `${extendModal.type} extended to ${new Date(extendDate).toLocaleDateString()}`);
                     setExtendModal(null);
-                    await load();
+                    await loadEmployees();
                   } catch (err) {
                     toast.error("Failed", err instanceof Error ? err.message : "Failed");
                   } finally { setExtending(false); }
@@ -1512,7 +1554,7 @@ export default function EmployeeManagement() {
             employment_type:  exitEmployee.employment_type,
             position_title:   undefined,
           }}
-          onSuccess={() => { setExitEmployee(null); void load(); }}
+          onSuccess={() => { setExitEmployee(null); void loadEmployees(); void loadReferenceData(); }}
           onClose={() => setExitEmployee(null)}
         />
       )}

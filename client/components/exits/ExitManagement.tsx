@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
+import { Pagination } from "@/components/ui/Pagination";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 const EXIT_REASONS = [
@@ -241,10 +243,13 @@ export default function ExitManagement() {
   const [data,       setData]       = useState<any>(null);
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState("");
+  const debouncedSearch             = useDebouncedValue(search, 250);
   const [dateFrom,   setDateFrom]   = useState("");  // filters by exit date
   const [dateTo,     setDateTo]     = useState("");
   const [filterReason, setFilterReason] = useState("");
   const [filterType,   setFilterType]   = useState("");
+  const [page,       setPage]       = useState(1);
+  const [pageSize,   setPageSize]   = useState(25);
   const [undoTarget, setUndoTarget] = useState<any>(null);
   const [undoing,    setUndoing]    = useState(false);
   const [editTarget, setEditTarget] = useState<any>(null);
@@ -267,7 +272,7 @@ export default function ExitManagement() {
 
   const exits: any[] = useMemo(() =>
     (data?.exits ?? []).filter((e: any) => {
-      if (search.trim() && !e.employee_name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (debouncedSearch.trim() && !e.employee_name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
       if (dateFrom || dateTo) {
         const d = (e.exit_date || "").slice(0, 10);
         if (!d) return false;
@@ -275,7 +280,15 @@ export default function ExitManagement() {
         if (dateTo   && d > dateTo)   return false;
       }
       return true;
-    }), [data, search, dateFrom, dateTo]);
+    }), [data, debouncedSearch, dateFrom, dateTo]);
+
+  // Reset to page 1 whenever the filtered set changes shape
+  useEffect(() => { setPage(1); }, [debouncedSearch, dateFrom, dateTo, filterReason, filterType]);
+
+  const paginatedExits = useMemo(
+    () => exits.slice((page - 1) * pageSize, page * pageSize),
+    [exits, page, pageSize]
+  );
 
   // Stats recomputed from the filtered exits (not `data.total` etc, which
   // reflect the full unscoped fetch) so the KPI cards track the date filter.
@@ -392,7 +405,7 @@ export default function ExitManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {exits.map((ex: any) => {
+                {paginatedExits.map((ex: any) => {
                   const r = reasonMeta(ex.exit_reason);
                   const t = typeMeta(ex.exit_type);
                   return (
@@ -449,6 +462,13 @@ export default function ExitManagement() {
               </tbody>
             </table>
           </div>
+        )}
+        {!loading && exits.length > 0 && (
+          <Pagination
+            page={page} pageSize={pageSize} total={exits.length}
+            onPageChange={setPage} onPageSizeChange={setPageSize}
+            itemLabel="exit records"
+          />
         )}
       </div>
 
