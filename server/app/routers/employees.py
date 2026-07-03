@@ -35,10 +35,19 @@ def create_employee(
         raise HTTPException(status_code=400, detail="Email already registered")
     emp_data = employee.dict()
     emp_data["hashed_password"] = auth_service.get_password_hash("NCBAStaff@123")
-    # Auto-set probation end date for permanent employees (3 months from now)
+    # Default date_joined to now (matching created_at) unless the caller
+    # explicitly set one — still editable afterwards via update.
+    if not emp_data.get("date_joined"):
+        emp_data["date_joined"] = datetime.utcnow()
+    # Auto-set probation end date for permanent employees (3 months from the
+    # actual join date, not from "now" — matters when backdating date_joined).
     from dateutil.relativedelta import relativedelta
     if emp_data.get("employment_type") == "permanent":
-        emp_data["probation_end_date"] = datetime.utcnow() + relativedelta(months=3)
+        join_date = emp_data.get("date_joined") or datetime.utcnow()
+        if hasattr(join_date, "year") and not hasattr(join_date, "hour"):
+            # date_joined comes through as a plain `date` from the schema—promote to datetime
+            join_date = datetime.combine(join_date, datetime.min.time())
+        emp_data["probation_end_date"] = join_date + relativedelta(months=3)
     return EmployeeService.create(db, emp_data)
 
 
@@ -390,6 +399,63 @@ def get_expiring_alerts(db: Session = Depends(get_db)):
         })
 
     return {"alerts": alerts, "count": len(alerts)}
+
+
+@router.get("/probation/roster", dependencies=[Depends(require_admin)])
+def get_probation_roster(db: Session = Depends(get_db)):
+    """
+    Every active, permanent employee currently on probation (not yet
+    confirmed), regardless of how many days are left — this is the full
+    tracker, distinct from /alerts/expiring which only surfaces the ones
+    expiring within 7 days.
+    """
+    now = datetime.utcnow()
+    employees = db.query(Employee).filter(
+        Employee.employment_type == "permanent",
+        Employee.status == "ACTIVE",
+        Employee.probation_confirmed_at == None,
+        Employee.probation_end_date != None,
+    ).order_by(Employee.probation_end_date).all()
+
+    roster = []
+    for e in employees:
+        days_left = (e.probation_end_date - now).days
+        roster.append({
+            "employee_id":        str(e.id),
+            "employee_name":      e.full_name,
+            "email":              e.email,
+            "date_joined":        e.date_joined.isoformat() if e.date_joined else None,
+            "probation_end_date": e.probation_end_date.isoformat(),
+            "days_left":          days_left,
+            "is_overdue":         days_left < 0,  # end date passed but never confirmed
+            "probation_extended": e.probation_extended,
+        })
+    return {"roster": roster, "count": len(roster)}
+
+
+@router.post("/{employee_id}/confirm-probation", dependencies=[Depends(require_admin)])
+def confirm_probation(
+    employee_id: UUID,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """Mark an employee's probation as successfully passed."""
+    employee = EmployeeService.get_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if employee.employment_type != "permanent":
+        raise HTTPException(status_code=400, detail="Only permanent employees have probation")
+    if employee.probation_confirmed_at:
+        raise HTTPException(status_code=400, detail="Probation already confirmed")
+
+    employee.probation_confirmed_at = datetime.utcnow()
+    db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return {
+        "message": "Probation confirmed",
+        "probation_confirmed_at": employee.probation_confirmed_at.isoformat(),
+    }
 
 
 @router.post("/{employee_id}/extend-probation", dependencies=[Depends(require_admin)])

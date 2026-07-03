@@ -83,6 +83,25 @@ class EmployeeStatus(str, enum.Enum):
     TERMINATED = "TERMINATED"
 
 
+# Fixed list of work locations (branches) offered in the Add/Edit Employee form.
+# Stored as a plain string column on Employee, not a DB enum, so new branches
+# can be added later without a migration.
+WORK_LOCATIONS = [
+    "Headquarters",
+    "Kigali Heights Branch",
+    "Remera Branch",
+    "Downtown Branch",
+    "Nyabugogo Branch",
+    "Gisozi Branch",
+    "Kayonza Branch",
+    "Musanze Branch",
+    "Rubavu Branch",
+    "Rusizi Branch",
+]
+
+MARITAL_STATUSES = ["single", "married", "divorced", "widowed"]
+
+
 class EmploymentType(str, enum.Enum):
     """Employment type enumeration."""
     PERMANENT = "permanent"
@@ -115,10 +134,15 @@ class Employee(Base):
     probation_end_date = Column(DateTime, nullable=True)   # auto-set 3mo from start for permanent
     contract_end_date = Column(DateTime, nullable=True)    # for temporary employees
     probation_extended = Column(Boolean, default=False)    # whether probation was extended
+    probation_confirmed_at = Column(DateTime, nullable=True)  # set when admin confirms probation passed
     # Past employment
     past_employer = Column(String(255), nullable=True)
     past_position = Column(String(255), nullable=True)
     gender        = Column(String(10), nullable=True)  # male | female
+    nationality     = Column(String(100), nullable=True)
+    marital_status  = Column(String(20), nullable=True)  # single | married | divorced | widowed
+    work_location   = Column(String(100), nullable=True)  # branch/location, see WORK_LOCATIONS
+    date_joined     = Column(DateTime, nullable=True)  # actual hire/start date — distinct from created_at (record creation)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

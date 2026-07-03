@@ -44,6 +44,12 @@ function calcAge(dob: string): number {
   const d   = new Date(dob);
   return Math.floor((now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
 }
+// Prefer the actual hire date (date_joined) over record-creation timestamp
+// (created_at) wherever the date filter needs to place an employee in time.
+// Falls back to created_at for older records saved before date_joined existed.
+function empJoinDate(e: any): string | null | undefined {
+  return e?.date_joined || e?.created_at;
+}
 
 // ─── palette ─────────────────────────────────────────────────────────────────
 
@@ -192,9 +198,10 @@ export default function AnalyticsDashboard() {
     return true;
   }, [dateFrom, dateTo]);
 
-  // Date-filtered employees (by created_at / hire date)
+  // Date-filtered employees (by date_joined — falls back to created_at for
+  // legacy records saved before date_joined existed)
   const filteredEmployees = useMemo(
-    () => isFiltered ? employees.filter(e => inRange((e as any).created_at)) : employees,
+    () => isFiltered ? employees.filter(e => inRange(empJoinDate(e))) : employees,
     [employees, inRange, isFiltered]
   );
 
@@ -510,7 +517,7 @@ export default function AnalyticsDashboard() {
     const srcPos = isFiltered ? filteredPositions : positions;
     const srcEmp = isFiltered ? filteredEmployees : employees;
     const earliestPos  = srcPos.reduce((min, p) => (p as any).created_at && (p as any).created_at < min ? (p as any).created_at : min, now.toISOString());
-    const earliestEmp  = srcEmp.reduce((min, e) => (e as any).created_at && (e as any).created_at < min ? (e as any).created_at : min, now.toISOString());
+    const earliestEmp  = srcEmp.reduce((min, e) => empJoinDate(e) && (empJoinDate(e) as string) < min ? (empJoinDate(e) as string) : min, now.toISOString());
     const earliest     = earliestPos < earliestEmp ? earliestPos : earliestEmp;
     const startDate    = earliest ? new Date(earliest) : new Date();
     startDate.setDate(1);
@@ -536,7 +543,7 @@ export default function AnalyticsDashboard() {
     const posLine = monthRange.map(({ key, label }) => ({
       month:     label,
       Positions: srcPos.filter(p => (p as any).created_at?.startsWith(key)).length,
-      Employees: srcEmp.filter(e => (e as any).created_at?.startsWith(key)).length,
+      Employees: srcEmp.filter(e => empJoinDate(e)?.startsWith(key)).length,
     }));
 
     return {
@@ -1293,7 +1300,7 @@ export default function AnalyticsDashboard() {
           {/* ── Monthly Additions — full-width horizontal scroll ── */}
           <ChartCard
             title="Monthly Additions"
-            subtitle={`New positions and employees created each month · ${a.posLine.length} month${a.posLine.length !== 1 ? "s" : ""} of history — scroll to explore`}
+            subtitle={`New positions created and employees joined each month · ${a.posLine.length} month${a.posLine.length !== 1 ? "s" : ""} of history — scroll to explore`}
           >
             {a.posLine.length <= 1 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">

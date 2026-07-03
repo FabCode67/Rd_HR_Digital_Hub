@@ -169,6 +169,10 @@ class EmployeeBase(BaseModel):
     past_employer: Optional[str] = None
     past_position: Optional[str] = None
     gender: Optional[str] = None  # male | female
+    nationality: Optional[str] = None
+    marital_status: Optional[str] = None  # single | married | divorced | widowed
+    work_location: Optional[str] = None   # branch, see WORK_LOCATIONS
+    date_joined: Optional[date] = None     # actual hire date, distinct from record created_at
 
 
 class EmployeeCreate(EmployeeBase):
@@ -190,6 +194,10 @@ class EmployeeUpdate(BaseModel):
     past_employer: Optional[str] = None
     past_position: Optional[str] = None
     gender: Optional[str] = None
+    nationality: Optional[str] = None
+    marital_status: Optional[str] = None
+    work_location: Optional[str] = None
+    date_joined: Optional[date] = None
 
 
 class EmployeeResponse(EmployeeBase):
@@ -198,6 +206,7 @@ class EmployeeResponse(EmployeeBase):
     profile_image_url: Optional[str] = None
     probation_end_date: Optional[datetime] = None
     probation_extended: Optional[bool] = False
+    probation_confirmed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

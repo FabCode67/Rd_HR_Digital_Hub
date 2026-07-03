@@ -322,6 +322,14 @@ export const employeeAPI = {
     return fetchAPI<any>(`${API_PREFIX}/employees/alerts/expiring`);
   },
 
+  async getProbationRoster(): Promise<{ roster: any[]; count: number }> {
+    return fetchAPI<{ roster: any[]; count: number }>(`${API_PREFIX}/employees/probation/roster`);
+  },
+
+  async confirmProbation(employeeId: string): Promise<{ message: string; probation_confirmed_at: string }> {
+    return fetchAPI(`${API_PREFIX}/employees/${employeeId}/confirm-probation`, { method: "POST" });
+  },
+
   async extendProbation(employeeId: string, payload: { new_end_date: string; reason?: string }): Promise<any> {
     return fetchAPI<any>(`${API_PREFIX}/employees/${employeeId}/extend-probation`, {
       method: "POST", body: JSON.stringify(payload),

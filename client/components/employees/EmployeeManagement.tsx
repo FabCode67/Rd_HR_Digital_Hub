@@ -4,15 +4,15 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { apiClient } from "@/lib/api";
 import {
   Department, Employee, EmployeeCreateInput, EmployeePositionDetail,
-  EmployeeStatus, EmployeeUpdateInput, Position,
+  EmployeeStatus, EmployeeUpdateInput, Position, WORK_LOCATIONS,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   Calendar, Loader2, Pencil, Plus, Trash2, X, Search,
   Users, UserCheck, UserX, UserMinus, TrendingUp, Camera,
-  LogOut as ExitIcon, ChevronRight, ChevronLeft,
+  LogOut as ExitIcon, ChevronRight, ChevronLeft, MoreVertical,
   CheckCircle2, BookOpen, Briefcase, User, Image as ImageIcon,
-  GraduationCap, Award,
+  GraduationCap, Award, Clock, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useToast, ToastContainer } from "@/components/ui/Toast";
 import { DeleteModal } from "@/components/ui/DeleteModal";
@@ -26,6 +26,8 @@ type FormState = {
   full_name: string; email: string; phone: string;
   date_of_birth: string; national_id: string;
   gender: string; status: EmployeeStatus;
+  nationality: string; marital_status: string; work_location: string;
+  date_joined: string;
   // Step 2 — Employment
   employment_type: "permanent" | "temporary";
   contract_end_date: string;
@@ -38,6 +40,16 @@ type FormState = {
 };
 
 const STATUSES: EmployeeStatus[] = ["ACTIVE","INACTIVE","SUSPENDED","TERMINATED"];
+// The Add/Edit Employee wizard only offers Active/Exited — Suspended and
+// Terminated are set through their own dedicated flows (e.g. the exit
+// process), not picked freely off this form.
+const WIZARD_STATUS_OPTIONS: EmployeeStatus[] = ["ACTIVE","INACTIVE"];
+const MARITAL_STATUSES = [
+  { value: "single",   label: "Single" },
+  { value: "married",  label: "Married" },
+  { value: "divorced", label: "Divorced" },
+  { value: "widowed",  label: "Widowed" },
+];
 const CORP_TITLES = [
   "Managing Director","Executive Director","Director",
   "Head of Department","Senior Manager","Manager",
@@ -47,6 +59,8 @@ const CORP_TITLES = [
 const emptyForm: FormState = {
   full_name: "", email: "", phone: "", date_of_birth: "", national_id: "",
   gender: "", status: "ACTIVE",
+  nationality: "", marital_status: "", work_location: "",
+  date_joined: new Date().toISOString().slice(0,10),
   employment_type: "permanent", contract_end_date: "",
   past_employer: "", past_position: "",
   departmentId: "", positionId: "", startDate: new Date().toISOString().slice(0,10),
@@ -79,6 +93,27 @@ const STATUS_COLORS: Record<EmployeeStatus, string> = {
 
 function toISO(d: string) { return `${d}T00:00:00`; }
 function fmtDate(v?: string) { return v ? new Date(v).toLocaleDateString() : "—"; }
+function calcAge(dob?: string | null): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  const age = Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  return age >= 0 && age < 120 ? age : null;
+}
+function probationInfo(emp: Employee): { label: string; className: string } {
+  if (emp.employment_type !== "permanent") {
+    return { label: "N/A", className: "text-slate-400" };
+  }
+  if ((emp as any).probation_confirmed_at) {
+    return { label: "Confirmed", className: "text-emerald-600 dark:text-emerald-400 font-medium" };
+  }
+  const end = (emp as any).probation_end_date as string | null | undefined;
+  if (!end) return { label: "—", className: "text-slate-400" };
+  const isOngoing = new Date(end).getTime() > Date.now();
+  return isOngoing
+    ? { label: "On Probation", className: "text-amber-600 dark:text-amber-400 font-medium" }
+    : { label: "Pending Confirmation", className: "text-rose-600 dark:text-rose-400 font-medium" };
+}
 
 function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
   return (
@@ -158,10 +193,16 @@ export default function EmployeeManagement() {
   const [stats, setStats]                 = useState<Stats | null>(null);
   const [loading, setLoading]             = useState(true);
   const [saving, setSaving]               = useState(false);
+  // Table columns: position/department/band per employee (from org tree),
+  // and department -> function name (for the Function column)
+  const [positionTree, setPositionTree]   = useState<any[]>([]);
+  const [orgFunctions, setOrgFunctions]   = useState<{ id: string; name: string }[]>([]);
 
   // Filters
   const [search, setSearch]         = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [dateFrom, setDateFrom]     = useState("");  // filters by Date of Joining
+  const [dateTo, setDateTo]         = useState("");
 
   // Form drawer
   const [form, setForm]             = useState<FormState>(emptyForm);
@@ -190,6 +231,10 @@ export default function EmployeeManagement() {
 
   // Expiring alerts
   const [alerts, setAlerts] = useState<any[]>([]);
+  // Full probation roster (everyone still on probation, not just those expiring soon)
+  const [probationRoster, setProbationRoster] = useState<any[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [showProbationTracker, setShowProbationTracker] = useState(false);
   const [extendModal, setExtendModal] = useState<{ emp: Employee; type: "probation" | "contract" } | null>(null);
   const [extendDate, setExtendDate] = useState("");
   const [extendReason, setExtendReason] = useState("");
@@ -212,6 +257,9 @@ export default function EmployeeManagement() {
   // Exit state
   const [exitEmployee, setExitEmployee] = useState<Employee | null>(null);
 
+  // Actions dropdown (per-row)
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+
   const filtered = useMemo(() => {
     let list = employees;
     if (statusFilter) list = list.filter(e => e.status === statusFilter);
@@ -219,24 +267,42 @@ export default function EmployeeManagement() {
       const q = search.toLowerCase();
       list = list.filter(e => e.full_name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q));
     }
+    if (dateFrom || dateTo) {
+      list = list.filter(e => {
+        const joined = ((e as any).date_joined || (e as any).created_at || "").slice(0, 10);
+        if (!joined) return false;
+        if (dateFrom && joined < dateFrom) return false;
+        if (dateTo   && joined > dateTo)   return false;
+        return true;
+      });
+    }
     return list;
-  }, [employees, search, statusFilter]);
+  }, [employees, search, statusFilter, dateFrom, dateTo]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [emps, depts, s] = await Promise.all([
+      const [emps, depts, s, tree, funcs] = await Promise.all([
         apiClient.employee.getAll(0, 500),
         apiClient.department.getAll(0, 200),
         apiClient.employee.getStats(),
+        apiClient.position.getOrganizationTree().catch(() => []),
+        apiClient.functions.getAll().catch(() => []),
       ]);
       setEmployees(emps);
       setDepartments(depts);
       setStats(s);
+      setPositionTree(tree);
+      setOrgFunctions(funcs);
       // Load expiring alerts
       try {
         const a = await apiClient.employee.getExpiringAlerts();
         setAlerts(a.alerts || []);
+      } catch { /* non-critical */ }
+      // Load full probation roster
+      try {
+        const p = await apiClient.employee.getProbationRoster();
+        setProbationRoster(p.roster || []);
       } catch { /* non-critical */ }
     } catch (err) {
       toast.error("Load failed", err instanceof Error ? err.message : "Failed to load");
@@ -246,6 +312,41 @@ export default function EmployeeManagement() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // employee_id -> { title, band, level, departmentId } — built by walking the
+  // organization tree (departments -> positions -> employee) once per load.
+  const employeePositionMap = useMemo(() => {
+    const map = new Map<string, { title: string; band: string | null; level: string; departmentId: string; departmentName: string }>();
+    const walkPositions = (positions: any[], departmentId: string, departmentName: string) => {
+      (positions ?? []).forEach((p: any) => {
+        if (p.employee) {
+          map.set(p.employee.id, {
+            title: p.title, band: p.band ?? null, level: p.level,
+            departmentId, departmentName,
+          });
+        }
+        if (p.children?.length) walkPositions(p.children, departmentId, departmentName);
+      });
+    };
+    const walkDepts = (nodes: any[]) => {
+      (nodes ?? []).forEach((d: any) => {
+        walkPositions(d.positions, d.id, d.name);
+        if (d.children?.length) walkDepts(d.children);
+      });
+    };
+    walkDepts(positionTree);
+    return map;
+  }, [positionTree]);
+
+  // department_id -> function name (via Department.function_id)
+  const deptFunctionMap = useMemo(() => {
+    const funcById = new Map(orgFunctions.map(f => [f.id, f.name]));
+    const map = new Map<string, string>();
+    departments.forEach(d => {
+      if ((d as any).function_id) map.set(d.id, funcById.get((d as any).function_id) ?? "—");
+    });
+    return map;
+  }, [departments, orgFunctions]);
 
   const loadDeptPositions = async (deptId: string, setter: React.Dispatch<React.SetStateAction<Position[]>>) => {
     if (!deptId) { setter([]); return; }
@@ -265,6 +366,12 @@ export default function EmployeeManagement() {
       full_name: e.full_name, email: e.email, phone: e.phone ?? "",
       date_of_birth: e.date_of_birth ?? "", national_id: e.national_id ?? "",
       gender: (e as any).gender ?? "", status: e.status,
+      nationality: (e as any).nationality ?? "",
+      marital_status: (e as any).marital_status ?? "",
+      work_location: (e as any).work_location ?? "",
+      date_joined: (e as any).date_joined
+        ? (e as any).date_joined.slice(0,10)
+        : (e as any).created_at ? (e as any).created_at.slice(0,10) : new Date().toISOString().slice(0,10),
       employment_type: e.employment_type ?? "permanent",
       contract_end_date: e.contract_end_date ? e.contract_end_date.slice(0,10) : "",
       past_employer: e.past_employer ?? "", past_position: e.past_position ?? "",
@@ -291,6 +398,10 @@ export default function EmployeeManagement() {
       date_of_birth: form.date_of_birth || undefined,
       national_id: form.national_id.trim() || undefined,
       status: form.status, gender: form.gender || undefined,
+      nationality: form.nationality.trim() || undefined,
+      marital_status: form.marital_status || undefined,
+      work_location: form.work_location || undefined,
+      date_joined: form.date_joined || undefined,
       employment_type: form.employment_type,
     };
     try {
@@ -394,6 +505,19 @@ export default function EmployeeManagement() {
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
+    }
+  };
+
+  const handleConfirmProbation = async (emp: { employee_id: string; employee_name: string }) => {
+    setConfirmingId(emp.employee_id);
+    try {
+      await apiClient.employee.confirmProbation(emp.employee_id);
+      toast.success("Probation confirmed", `${emp.employee_name} has passed probation.`);
+      await load();
+    } catch (err) {
+      toast.error("Failed", err instanceof Error ? err.message : "Could not confirm probation");
+    } finally {
+      setConfirmingId(null);
     }
   };
 
@@ -503,6 +627,69 @@ export default function EmployeeManagement() {
         </div>
       )}
 
+      {/* Probation Tracker */}
+      {probationRoster.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+          <button
+            onClick={() => setShowProbationTracker(s => !s)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
+                <Clock className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Probation Tracker — {probationRoster.length} employee{probationRoster.length !== 1 ? "s" : ""} on probation
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {probationRoster.filter((r: any) => r.is_overdue).length > 0
+                    ? `${probationRoster.filter((r: any) => r.is_overdue).length} past their probation end date — confirm or extend`
+                    : "Confirm employees once their probation period is successfully completed"}
+                </p>
+              </div>
+            </div>
+            {showProbationTracker ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
+          {showProbationTracker && (
+            <div className="border-t border-slate-100 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+              {probationRoster.map((r: any) => (
+                <div key={r.employee_id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{r.employee_name}</p>
+                    <p className={cn("text-xs", r.is_overdue ? "text-rose-600 dark:text-rose-400" : "text-slate-500 dark:text-slate-400")}>
+                      {r.is_overdue
+                        ? `Probation ended ${Math.abs(r.days_left)} day${Math.abs(r.days_left) !== 1 ? "s" : ""} ago — needs confirmation`
+                        : `${r.days_left} day${r.days_left !== 1 ? "s" : ""} left · ends ${new Date(r.probation_end_date).toLocaleDateString()}`}
+                      {r.probation_extended && <span className="ml-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">extended</span>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const emp = employees.find(e => e.id === r.employee_id);
+                        if (emp) { setExtendModal({ emp, type: "probation" }); setExtendDate(""); setExtendReason(""); }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                      Extend
+                    </button>
+                    <button
+                      onClick={() => void handleConfirmProbation(r)}
+                      disabled={confirmingId === r.employee_id}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
+                      {confirmingId === r.employee_id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <CheckCircle2 className="h-3 w-3" />}
+                      Confirm
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
@@ -536,13 +723,23 @@ export default function EmployeeManagement() {
             <table className="w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
               <thead className="bg-slate-50 dark:bg-slate-950/40">
                 <tr>
-                  {["Name", "Email", "Phone", "Status", "Actions"].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{h}</th>
+                  {[
+                    "Name", "Email", "Phone", "Gender", "Nationality",
+                    "Position", "Department", "Band", "Employment Type",
+                    "Date of Joining", "Date of Birth", "Age", "Status",
+                    "Probation", "Location", "Function", "Actions",
+                  ].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map(emp => (
+                {filtered.map(emp => {
+                  const posInfo = employeePositionMap.get(emp.id);
+                  const age = calcAge(emp.date_of_birth);
+                  const probation = probationInfo(emp);
+                  const functionName = posInfo ? (deptFunctionMap.get(posInfo.departmentId) ?? "—") : "—";
+                  return (
                   <tr key={emp.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
@@ -556,45 +753,72 @@ export default function EmployeeManagement() {
                             </div>
                           )}
                         </div>
-                        <span className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</span>
+                        <span className="font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">{emp.full_name}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{emp.email}</td>
-                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{emp.phone || "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{emp.phone || "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 capitalize whitespace-nowrap">{(emp as any).gender || "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{(emp as any).nationality || "—"}</td>
+                    <td className="px-5 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">{posInfo?.title ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{posInfo?.departmentName ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{posInfo?.band ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 capitalize whitespace-nowrap">{emp.employment_type ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate((emp as any).date_joined || (emp as any).created_at)}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(emp.date_of_birth)}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{age !== null ? `${age} yrs` : "—"}</td>
                     <td className="px-5 py-3">
-                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_COLORS[emp.status])}>
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap", STATUS_COLORS[emp.status])}>
                         <span className="h-1.5 w-1.5 rounded-full bg-current" />
                         {STATUS_LABELS[emp.status] ?? emp.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
-                          <Pencil className="h-3 w-3" /> Edit
-                        </button>
-                        <button onClick={() => setTimelineEmployee(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-300 transition-colors">
-                          <TrendingUp className="h-3 w-3" /> Career
-                        </button>
-                        <button onClick={() => void openPosModal(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-300 transition-colors">
-                          <Calendar className="h-3 w-3" /> Position
-                        </button>
-                        {emp.status === "ACTIVE" && (
-                          <button onClick={() => setExitEmployee(emp)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-400 transition-colors">
-                            <ExitIcon className="h-3 w-3" /> Exit
-                          </button>
-                        )}
-                        <button onClick={() => setDeleteTarget(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400 transition-colors">
-                          <Trash2 className="h-3 w-3" /> Delete
+                    <td className={cn("px-5 py-3 text-xs whitespace-nowrap", probation.className)}>{probation.label}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{(emp as any).work_location || "—"}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">{functionName}</td>
+                    <td className="px-5 py-3 relative">
+                      <div className="flex justify-end">
+                        <button
+                          onClick={e => { e.stopPropagation(); setActionMenuId(actionMenuId === emp.id ? null : emp.id); }}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                        >
+                          <MoreVertical className="h-4 w-4" />
                         </button>
                       </div>
+                      {actionMenuId === emp.id && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setActionMenuId(null)} />
+                          <div className="absolute right-5 top-10 z-50 w-44 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 shadow-lg">
+                            <button onClick={() => { openEdit(emp); setActionMenuId(null); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </button>
+                            <button onClick={() => { setTimelineEmployee(emp); setActionMenuId(null); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors">
+                              <TrendingUp className="h-3.5 w-3.5" /> Career
+                            </button>
+                            <button onClick={() => { void openPosModal(emp); setActionMenuId(null); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors">
+                              <Calendar className="h-3.5 w-3.5" /> Position
+                            </button>
+                            {emp.status === "ACTIVE" && (
+                              <button onClick={() => { setExitEmployee(emp); setActionMenuId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
+                                <ExitIcon className="h-3.5 w-3.5" /> Exit
+                              </button>
+                            )}
+                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                            <button onClick={() => { setDeleteTarget(emp); setActionMenuId(null); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -691,13 +915,36 @@ export default function EmployeeManagement() {
                       <input type="date" value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} className="field" />
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Date of Joining</label>
+                      <input type="date" value={form.date_joined} onChange={e => setForm(f => ({ ...f, date_joined: e.target.value }))} className="field" />
+                      <p className="mt-1 text-[11px] text-slate-400">Defaults to today — change it if the actual hire date is different.</p>
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">National ID</label>
                       <input value={form.national_id} onChange={e => setForm(f => ({ ...f, national_id: e.target.value }))} className="field" placeholder="ID number" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
                       <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as EmployeeStatus }))} className="field">
-                        {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
+                        {WIZARD_STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nationality</label>
+                      <input value={form.nationality} onChange={e => setForm(f => ({ ...f, nationality: e.target.value }))} className="field" placeholder="e.g. Rwandan" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Marital Status</label>
+                      <select value={form.marital_status} onChange={e => setForm(f => ({ ...f, marital_status: e.target.value }))} className="field">
+                        <option value="">Select marital status</option>
+                        {MARITAL_STATUSES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Location of Work</label>
+                      <select value={form.work_location} onChange={e => setForm(f => ({ ...f, work_location: e.target.value }))} className="field">
+                        <option value="">Select location</option>
+                        {WORK_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                       </select>
                     </div>
                     <div className="sm:col-span-2">

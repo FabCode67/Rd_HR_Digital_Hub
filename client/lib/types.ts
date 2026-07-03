@@ -24,6 +24,23 @@ export type PositionLevel =
   | "Graduate Trainee"
   | "Intern";
 
+export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
+
+export const WORK_LOCATIONS = [
+  "Headquarters",
+  "Kigali Heights Branch",
+  "Remera Branch",
+  "Downtown Branch",
+  "Nyabugogo Branch",
+  "Gisozi Branch",
+  "Kayonza Branch",
+  "Musanze Branch",
+  "Rubavu Branch",
+  "Rusizi Branch",
+] as const;
+
+export type WorkLocation = typeof WORK_LOCATIONS[number];
+
 /**
  * Employee information for display in organizational structure
  */
@@ -40,9 +57,15 @@ export interface Employee {
   employment_type?: "permanent" | "temporary";
   probation_end_date?: string | null;
   probation_extended?: boolean;
+  probation_confirmed_at?: string | null;
   contract_end_date?: string | null;
   past_employer?: string | null;
   past_position?: string | null;
+  gender?: string | null;
+  nationality?: string | null;
+  marital_status?: MaritalStatus | string | null;
+  work_location?: WorkLocation | string | null;
+  date_joined?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +187,11 @@ export interface EmployeeCreateInput {
   contract_end_date?: string;
   past_employer?: string;
   past_position?: string;
+  gender?: string;
+  nationality?: string;
+  marital_status?: MaritalStatus | string;
+  work_location?: WorkLocation | string;
+  date_joined?: string;
 }
 
 export interface EmployeeUpdateInput {
@@ -178,6 +206,11 @@ export interface EmployeeUpdateInput {
   probation_end_date?: string;
   past_employer?: string;
   past_position?: string;
+  gender?: string;
+  nationality?: string;
+  marital_status?: MaritalStatus | string;
+  work_location?: WorkLocation | string;
+  date_joined?: string;
 }
 
 export interface EmployeePositionAssignment {
